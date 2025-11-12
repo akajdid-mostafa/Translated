@@ -1,0 +1,116 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model TranslationRequest {
+  id                String            @id @default(cuid())
+  // Customer Information
+  customerName      String
+  customerEmail     String
+  customerPhone     String?
+  customerAddress   String?
+  
+  // Translation Details
+  sourceLanguage    String
+  targetLanguage    String
+  documentType      DocumentType
+  urgency          Urgency           @default(STANDARD)
+  specialization   String?
+  additionalNotes  String?
+  numberOfPages     String
+  
+  // Document Information
+  originalFileName  String
+  fileUrl          String
+  fileSize         Int
+  fileType         String
+  
+  // Status and Tracking
+  status           RequestStatus     @default(PENDING)
+  estimatedPrice   Float?
+  finalPrice       Float?
+  estimatedDelivery DateTime?
+  actualDelivery   DateTime?
+  
+  // Admin Notes
+  adminNotes       String?
+  assignedTo       String?
+  
+  // Timestamps
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  // Relations
+  statusHistory    StatusHistory[]
+  
+  @@map("translation_requests")
+}
+
+model StatusHistory {
+  id                  String             @id @default(cuid())
+  requestId           String
+  status              RequestStatus
+  notes               String?
+  changedBy           String
+  createdAt           DateTime           @default(now())
+  
+  translationRequest  TranslationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  
+  @@map("status_history")
+}
+
+enum Role {
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum DocumentType {
+  LEGAL
+  MEDICAL
+  TECHNICAL
+  BUSINESS
+  ACADEMIC
+  PERSONAL
+  CERTIFIED
+  OTHER
+}
+
+enum Urgency {
+  STANDARD
+  URGENT
+  EXPRESS
+  SAME_DAY
+  NEXT_DAY
+}
+
+enum RequestStatus {
+  PENDING
+  UNDER_REVIEW
+  QUOTE_SENT
+  APPROVED
+  IN_PROGRESS
+  COMPLETED
+  DELIVERED
+  CANCELLED
+  ON_HOLD
+}

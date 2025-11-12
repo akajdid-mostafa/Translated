@@ -1,0 +1,27 @@
+# Database
+DATABASE_URL="postgresql://username:password@localhost:5432/translated_ae?schema=public"
+
+# NextAuth.js
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="your-super-secret-nextauth-secret-key-here"
+
+# Cloudinary Configuration
+CLOUDINARY_CLOUD_NAME="your-cloudinary-cloud-name"
+CLOUDINARY_API_KEY="your-cloudinary-api-key"
+CLOUDINARY_API_SECRET="your-cloudinary-api-secret"
+
+# Admin Configuration
+ADMIN_EMAIL="admin@translated.ae"
+ADMIN_PASSWORD="your-secure-admin-password"
+
+# JWT Secret for additional security
+JWT_SECRET="your-jwt-secret-key-for-additional-auth"
+
+# Email Configuration (for notifications)
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT="587"
+SMTP_USER="your-email@gmail.com"
+SMTP_PASS="your-app-password"
+
+# App Configuration
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
