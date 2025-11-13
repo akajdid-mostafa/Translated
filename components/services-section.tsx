@@ -19,10 +19,10 @@ export function ServicesSection() {
         </div>
 
         {/* Service Features Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-16" suppressHydrationWarning>
           <Card className="text-center border-0 shadow-sm">
             <CardContent className="p-6">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
                 <Shield className="w-8 h-8 text-blue-600" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Legal & Certified</h3>
@@ -62,13 +62,13 @@ export function ServicesSection() {
         </div>
 
         {/* Language Support */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-12" suppressHydrationWarning>
           <h3 className="text-2xl font-bold text-gray-900 mb-6">
             We provide translations in a wide range of languages, including:
           </h3>
 
-          <div className="relative overflow-hidden mb-8">
-            <div className="flex animate-scroll gap-3 whitespace-nowrap">
+          <div className="relative overflow-hidden mb-8" suppressHydrationWarning>
+            <div className="flex animate-scroll gap-3 whitespace-nowrap" suppressHydrationWarning>
               <Badge variant="outline" className="px-4 py-2 text-sm flex-shrink-0">
                 🇦🇪 Arabic
               </Badge>
@@ -135,31 +135,31 @@ export function ServicesSection() {
         </div>
 
         {/* Statistics */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm">
+        <div className="bg-white rounded-2xl p-8 shadow-sm" suppressHydrationWarning>
           <h3 className="text-2xl font-bold text-center text-gray-900 mb-8">Our Achievements at a Glance</h3>
 
-          <div className="grid md:grid-cols-3 gap-8 text-center">
-            <div>
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="grid md:grid-cols-3 gap-8 text-center" suppressHydrationWarning>
+            <div suppressHydrationWarning>
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
                 <Users className="w-8 h-8 text-blue-600" />
               </div>
-              <div className="text-3xl font-bold text-gray-900 mb-2">10,240+</div>
+              <div className="text-3xl font-bold text-gray-900 mb-2" suppressHydrationWarning>10,240+</div>
               <p className="text-gray-600">Happy Customers</p>
             </div>
 
-            <div>
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div suppressHydrationWarning>
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
                 <Globe className="w-8 h-8 text-green-600" />
               </div>
-              <div className="text-3xl font-bold text-gray-900 mb-2">1600+</div>
+              <div className="text-3xl font-bold text-gray-900 mb-2" suppressHydrationWarning>1600+</div>
               <p className="text-gray-600">Happy Clients</p>
             </div>
 
-            <div>
-              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div suppressHydrationWarning>
+              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
                 <Award className="w-8 h-8 text-purple-600" />
               </div>
-              <div className="text-3xl font-bold text-gray-900 mb-2">30+</div>
+              <div className="text-3xl font-bold text-gray-900 mb-2" suppressHydrationWarning>30+</div>
               <p className="text-gray-600">Native Languages</p>
             </div>
           </div>

@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge"
 
 export function HeroSection() {
   return (
-    <section className="relative bg-gray-50 py-20 overflow-hidden">
+    <section className="relative  py-20 overflow-hidden">
       {/* Flag decorations */}
       {/* <div className="absolute inset-0 pointer-events-none"> */}
         {/* French flag */}
@@ -28,7 +28,7 @@ export function HeroSection() {
 
       <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center" suppressHydrationWarning>
         <div className="mb-6" suppressHydrationWarning>
-          <Badge variant="secondary" className="bg-[#eaeef6] text-[#076e32] hover:bg-[#50c879] mb-4">
+          <Badge variant="secondary" className="bg-[#eaeef6] text-[#076e32]  mb-4">
             100% Online by the KSA Certified Translation
           </Badge>
         </div>

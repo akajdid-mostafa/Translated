@@ -345,7 +345,7 @@ export function DocumentUploadForm() {
           {/* Upload Documents Section */}
           <Card>
             <CardHeader>
-              <div className="flex items-center">
+              <div className="flex items-center" suppressHydrationWarning>
                 <Upload className="w-5 h-5 text-[#076e32] mr-2" />
                 <CardTitle className="text-xl">
                   Upload your documents in seconds
@@ -364,6 +364,7 @@ export function DocumentUploadForm() {
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
                 onDrop={handleDrop}
+                suppressHydrationWarning
               >
                 <input
                   type="file"
@@ -445,7 +446,7 @@ export function DocumentUploadForm() {
           {/* Document & Translation Details */}
           <Card>
             <CardHeader>
-              <div className="flex items-center">
+              <div className="flex items-center" suppressHydrationWarning>
                 <FileText className="w-5 h-5 text-[#076e32] mr-2" />
                 <CardTitle className="text-xl">
                   Document & Translation Details
@@ -457,8 +458,8 @@ export function DocumentUploadForm() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
+              <div className="grid md:grid-cols-2 gap-4" suppressHydrationWarning>
+                <div className="space-y-2" suppressHydrationWarning>
                   <Label htmlFor="sourceLanguage">Source Language *</Label>
                   <Select
                     value={formData.sourceLanguage}
@@ -484,7 +485,7 @@ export function DocumentUploadForm() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2" suppressHydrationWarning>
                   <Label htmlFor="targetLanguage">Target Language *</Label>
                   <Select
                     value={formData.targetLanguage}
@@ -509,8 +510,8 @@ export function DocumentUploadForm() {
                 </div>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
+              <div className="grid md:grid-cols-2 gap-4" suppressHydrationWarning>
+                <div className="space-y-2" suppressHydrationWarning>
                   <Label htmlFor="documentType">Document Type *</Label>
                   <Select
                     value={formData.documentType}
@@ -533,7 +534,7 @@ export function DocumentUploadForm() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2" suppressHydrationWarning>
                   <Label htmlFor="numPages">Number of Pages *</Label>
                   <Input
                     id="numPages"
@@ -546,7 +547,7 @@ export function DocumentUploadForm() {
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2" suppressHydrationWarning>
                 <Label htmlFor="urgency">Urgency</Label>
                 <Select
                   value={formData.urgency}
@@ -565,7 +566,7 @@ export function DocumentUploadForm() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2" suppressHydrationWarning>
                 <Label htmlFor="specialization">Special Instructions</Label>
                 <Textarea
                   id="specialization"
@@ -590,7 +591,7 @@ export function DocumentUploadForm() {
           {/* Customer Details */}
           <Card>
             <CardHeader>
-              <div className="flex items-center">
+              <div className="flex items-center" suppressHydrationWarning>
                 <User className="w-5 h-5 text-[#076e32] mr-2" />
                 <CardTitle className="text-xl">Customer Details</CardTitle>
               </div>
@@ -600,8 +601,8 @@ export function DocumentUploadForm() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
+              <div className="grid md:grid-cols-2 gap-4" suppressHydrationWarning>
+                <div className="space-y-2" suppressHydrationWarning>
                   <Label htmlFor="firstName">First Name *</Label>
                   <Input
                     id="firstName"
@@ -613,7 +614,7 @@ export function DocumentUploadForm() {
                     required
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2" suppressHydrationWarning>
                   <Label htmlFor="lastName">Last Name *</Label>
                   <Input
                     id="lastName"
@@ -626,8 +627,8 @@ export function DocumentUploadForm() {
                   />
                 </div>
               </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
+              <div className="grid md:grid-cols-2 gap-4" suppressHydrationWarning>
+                <div className="space-y-2" suppressHydrationWarning>
                   <Label htmlFor="customerEmail">Email *</Label>
                   <Input
                     id="customerEmail"
@@ -643,7 +644,7 @@ export function DocumentUploadForm() {
                     required
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2" suppressHydrationWarning>
                   <Label htmlFor="customerPhone">Phone Number *</Label>
                   <Input
                     id="customerPhone"
