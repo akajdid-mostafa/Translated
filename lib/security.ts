@@ -9,22 +9,24 @@ export const rateLimitConfig = {
   legacyHeaders: false,
 }
 
-// File upload security
+// File upload security - Only allow PDF, Word, and TXT files
 export const validateFileUpload = (file: File) => {
   const allowedTypes = [
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "text/plain",
-    "image/jpeg",
-    "image/png",
-    "image/jpg",
+    "application/pdf", // PDF
+    "application/msword", // DOC (Word 97-2003)
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // DOCX (Word 2007+)
+    "text/plain", // TXT
   ]
 
+  // Also check file extension as backup
+  const fileName = file.name.toLowerCase()
+  const allowedExtensions = ['.pdf', '.doc', '.docx', '.txt']
+  const fileExtension = fileName.substring(fileName.lastIndexOf('.'))
+  
   const maxSize = 10 * 1024 * 1024 // 10MB
 
-  if (!allowedTypes.includes(file.type)) {
-    throw new Error("File type not allowed. Please upload PDF, DOC, DOCX, TXT, JPG, or PNG files only.")
+  if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+    throw new Error("File type not allowed. Please upload only PDF, DOC, DOCX, or TXT files.")
   }
 
   if (file.size > maxSize) {

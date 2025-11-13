@@ -75,6 +75,11 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState("10")
+  const [sortBy, setSortBy] = useState("date")
+  const [sortOrder, setSortOrder] = useState("desc")
+  const [dateFilter, setDateFilter] = useState("")
+  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 })
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [requestIdToDelete, setRequestIdToDelete] = useState<string | null>(null)
   const [showDeleteSuccessModal, setShowDeleteSuccessModal] = useState(false) // New state for success modal
@@ -83,7 +88,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetchStats()
     fetchRequests()
-  }, [currentPage, statusFilter, searchTerm])
+  }, [currentPage, statusFilter, searchTerm, itemsPerPage, sortBy, sortOrder, dateFilter])
 
   const fetchStats = async () => {
     try {
@@ -99,17 +104,22 @@ export default function AdminDashboard() {
 
   const fetchRequests = async () => {
     try {
+      setLoading(true)
       const params = new URLSearchParams({
         page: currentPage.toString(),
-        limit: "10",
+        limit: itemsPerPage,
         ...(statusFilter !== "all" && { status: statusFilter }),
         ...(searchTerm && { search: searchTerm }),
+        sortBy,
+        sortOrder,
+        ...(dateFilter && { dateFrom: dateFilter, dateTo: dateFilter }),
       })
 
       const response = await fetch(`/api/admin/requests?${params}`)
       if (response.ok) {
         const data = await response.json()
         setRequests(data.requests)
+        setPagination(data.pagination)
       }
     } catch (error) {
       console.error("Error fetching requests:", error)
@@ -303,19 +313,26 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 {/* Filters */}
-                <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                <div className="flex flex-col gap-4 mb-6">
+                  <div className="flex flex-col sm:flex-row gap-4">
                   <div className="flex-1">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                       <Input
                         placeholder="Search by name, email, or filename..."
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                          onChange={(e) => {
+                            setSearchTerm(e.target.value)
+                            setCurrentPage(1)
+                          }}
                         className="pl-10"
                       />
                     </div>
                   </div>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <Select value={statusFilter} onValueChange={(value) => {
+                      setStatusFilter(value)
+                      setCurrentPage(1)
+                    }}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Filter by status" />
                     </SelectTrigger>
@@ -328,6 +345,71 @@ export default function AdminDashboard() {
                       <SelectItem value="DELIVERED">Delivered</SelectItem>
                     </SelectContent>
                   </Select>
+                  </div>
+                  
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <Select value={sortBy} onValueChange={(value) => {
+                      setSortBy(value)
+                      setCurrentPage(1)
+                    }}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Sort by" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="date">Date</SelectItem>
+                        <SelectItem value="name">Name</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    
+                    <Select value={sortOrder} onValueChange={(value) => {
+                      setSortOrder(value)
+                      setCurrentPage(1)
+                    }}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Order" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sortBy === "date" ? (
+                          <>
+                            <SelectItem value="desc">Newest First</SelectItem>
+                            <SelectItem value="asc">Oldest First</SelectItem>
+                          </>
+                        ) : (
+                          <>
+                            <SelectItem value="asc">A to Z</SelectItem>
+                            <SelectItem value="desc">Z to A</SelectItem>
+                          </>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    
+                    <Input
+                      type="date"
+                      value={dateFilter}
+                      onChange={(e) => {
+                        setDateFilter(e.target.value)
+                        setCurrentPage(1)
+                      }}
+                      className="w-[180px]"
+                      placeholder="Filter by date"
+                    />
+                    
+                    <Select value={itemsPerPage} onValueChange={(value) => {
+                      setItemsPerPage(value)
+                      setCurrentPage(1)
+                    }}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Items per page" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10 per page</SelectItem>
+                        <SelectItem value="25">25 per page</SelectItem>
+                        <SelectItem value="50">50 per page</SelectItem>
+                        <SelectItem value="100">100 per page</SelectItem>
+                        <SelectItem value="all">Show All</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 {/* Requests Table */}
@@ -377,11 +459,42 @@ export default function AdminDashboard() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => {
-                                  // Use the view-file API to ensure proper display
+                                  if (!request.fileUrl || request.fileUrl === 'pending') {
+                                    alert('File is not available yet. Please wait for the file to be processed.');
+                                    return;
+                                  }
+                                  
+                                  try {
+                                    // Check file format
+                                    const fileUrl = request.fileUrl.toLowerCase();
+                                    const isPdf = fileUrl.includes('.pdf');
+                                    const isTxt = fileUrl.includes('.txt');
+                                    const isDoc = fileUrl.includes('.doc') && !fileUrl.includes('.docx');
+                                    const isDocx = fileUrl.includes('.docx');
+                                    
+                                    if (isPdf || isTxt) {
+                                      // PDF and TXT can be viewed directly - open API URL in new tab
+                                      const viewUrl = `/api/view-file?url=${encodeURIComponent(request.fileUrl)}`;
+                                      window.open(viewUrl, '_blank', 'noopener,noreferrer');
+                                    } else if (isDoc || isDocx) {
+                                      // Word documents cannot be viewed inline - show message
+                                      const downloadUrl = `/api/download?url=${encodeURIComponent(request.fileUrl)}&filename=${encodeURIComponent(request.originalFileName || 'file')}`;
+                                      const userChoice = confirm('Word documents cannot be displayed in the browser. Would you like to download the file to view it?');
+                                      if (userChoice) {
+                                        window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+                                      }
+                                    } else {
+                                      // Unknown format - try to view, but warn user
                                   const viewUrl = `/api/view-file?url=${encodeURIComponent(request.fileUrl)}`;
-                                  window.open(viewUrl, "_blank");
+                                      window.open(viewUrl, '_blank', 'noopener,noreferrer');
+                                    }
+                                  } catch (error) {
+                                    console.error('View file error:', error);
+                                    alert('Failed to open file. Please try again.');
+                                  }
                                 }}
                                 className="flex items-center gap-1"
+                                disabled={!request.fileUrl || request.fileUrl === 'pending'}
                               >
                                 <ExternalLink className="w-3 h-3" />
                                 View
@@ -390,6 +503,11 @@ export default function AdminDashboard() {
                                 variant="outline"
                                 size="sm"
                                 onClick={async () => {
+                                  if (!request.fileUrl || request.fileUrl === 'pending') {
+                                    alert('File is not available yet. Please wait for the file to be processed.');
+                                    return;
+                                  }
+
                                   try {
                                     // Check if it's a data URL (base64)
                                     if (request.fileUrl.startsWith('data:')) {
@@ -400,35 +518,45 @@ export default function AdminDashboard() {
                                       document.body.appendChild(link);
                                       link.click();
                                       document.body.removeChild(link);
-                                    } else {
-                                      // Try direct download first
-                                      try {
+                                      return;
+                                    }
+
+                                    // For Cloudinary or other URLs, use the download API
+                                    const downloadUrl = `/api/download?url=${encodeURIComponent(request.fileUrl)}&filename=${encodeURIComponent(request.originalFileName)}`;
+                                    
+                                    // Try to download using fetch first to handle errors
+                                    const response = await fetch(downloadUrl);
+                                    
+                                    if (!response.ok) {
+                                      const errorData = await response.json().catch(() => ({ error: 'Download failed' }));
+                                      throw new Error(errorData.error || 'Download failed');
+                                    }
+
+                                    // Get the blob and create download link
+                                    const blob = await response.blob();
+                                    const url = window.URL.createObjectURL(blob);
                                         const link = document.createElement('a');
-                                        link.href = request.fileUrl;
+                                    link.href = url;
                                         link.download = request.originalFileName;
-                                        link.target = '_blank';
                                         document.body.appendChild(link);
                                         link.click();
                                         document.body.removeChild(link);
-                                      } catch (directError) {
-                                        console.warn('Direct download failed, trying server-side:', directError);
-                                        // Fallback to server-side download
-                                        const downloadUrl = `/api/download?url=${encodeURIComponent(request.fileUrl)}&filename=${encodeURIComponent(request.originalFileName)}`;
-                                        window.open(downloadUrl, '_blank');
-                                      }
-                                    }
+                                    window.URL.revokeObjectURL(url);
                                   } catch (error) {
                                     console.error('Download error:', error);
                                     alert(`Download failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
                                   }
                                 }}
                                 className="flex items-center gap-1"
+                                disabled={!request.fileUrl || request.fileUrl === 'pending'}
                               >
                                 <Download className="w-3 h-3" />
                                 Download
                               </Button>
                             </div>
-                            <div className="text-xs text-gray-500 mt-1">{(request.fileSize / 1024 / 1024).toFixed(2)} MB</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {request.fileSize ? `${(request.fileSize / 1024 / 1024).toFixed(2)} MB` : 'N/A'}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <div className="text-sm font-medium">{request.finalPrice || request.estimatedPrice || "N/A"} DH</div>
@@ -484,6 +612,68 @@ export default function AdminDashboard() {
                     </TableBody>
                   </Table>
                 </div>
+                
+                {/* Pagination */}
+                {pagination.pages > 1 && itemsPerPage !== "all" && (
+                  <div className="flex items-center justify-between mt-6">
+                    <div className="text-sm text-gray-600">
+                      Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} requests
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        Previous
+                      </Button>
+                      
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
+                          let pageNum: number
+                          if (pagination.pages <= 5) {
+                            pageNum = i + 1
+                          } else if (currentPage <= 3) {
+                            pageNum = i + 1
+                          } else if (currentPage >= pagination.pages - 2) {
+                            pageNum = pagination.pages - 4 + i
+                          } else {
+                            pageNum = currentPage - 2 + i
+                          }
+                          
+                          return (
+                            <Button
+                              key={pageNum}
+                              variant={currentPage === pageNum ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setCurrentPage(pageNum)}
+                              className="min-w-[40px]"
+                            >
+                              {pageNum}
+                            </Button>
+                          )
+                        })}
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.min(pagination.pages, prev + 1))}
+                        disabled={currentPage === pagination.pages}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Show total when "all" is selected */}
+                {itemsPerPage === "all" && pagination.total > 0 && (
+                  <div className="mt-6 text-sm text-gray-600 text-center">
+                    Showing all {pagination.total} requests
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

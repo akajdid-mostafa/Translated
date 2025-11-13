@@ -5,10 +5,10 @@ import { Shield, Clock, Award, Users, Zap, Globe } from "lucide-react"
 
 export function ServicesSection() {
   return (
-    <section id="services" className="py-16 bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="services" className="py-16 bg-gray-50" suppressHydrationWarning>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" suppressHydrationWarning>
         {/* Main Title */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-16" suppressHydrationWarning>
           <h2 className="text-3xl font-bold text-gray-900 mb-4">
             Fast, Accurate & Certified Legal Translation Services in the UAE
           </h2>
@@ -131,7 +131,7 @@ export function ServicesSection() {
             We offer certified translations in more languages — contact us for special requests.
           </p>
 
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white border-0">Contact Us</Button>
+          <Button className="bg-[#076e32] hover:bg-[#065a2a] text-white border-0">Contact Us</Button>
         </div>
 
         {/* Statistics */}

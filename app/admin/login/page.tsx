@@ -2,14 +2,16 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Shield, Eye, EyeOff } from "lucide-react"
+import { Shield, Eye, EyeOff, Home } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
+import Link from "next/link"
 
 export default function AdminLogin() {
   const [email, setEmail] = useState("")
@@ -18,6 +20,26 @@ export default function AdminLogin() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  const { user, login, loading: authLoading } = useAuth()
+
+  // If user is already logged in, redirect to dashboard immediately
+  useEffect(() => {
+    if (user) {
+      router.replace("/admin/dashboard")
+    }
+  }, [user, router])
+
+  // Show loading state while checking auth or if already logged in
+  if (authLoading || user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-green-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">{user ? "Redirecting to dashboard..." : "Loading..."}</p>
+        </div>
+      </div>
+    )
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,22 +47,14 @@ export default function AdminLogin() {
     setError("")
 
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      })
+      // Use the AuthProvider's login method which updates the auth state
+      const success = await login(email, password)
 
-      const data = await response.json()
-      console.log("Login API response.ok:", response.ok)
-      console.log("Login API data:", data)
-
-      if (response.ok) {
-        router.push("/admin/dashboard")
+      if (success) {
+        // Immediately redirect to dashboard after successful login
+        router.replace("/admin/dashboard")
       } else {
-        setError(data.error || "Login failed")
+        setError("Invalid credentials. Please try again.")
       }
     } catch (error) {
       setError("Network error. Please try again.")
@@ -106,6 +120,15 @@ export default function AdminLogin() {
               {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
+          
+          <div className="mt-4 pt-4 border-t">
+            <Link href="/">
+              <Button variant="outline" className="w-full" type="button">
+                <Home className="w-4 h-4 mr-2" />
+                Go to Home Page
+              </Button>
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </div>

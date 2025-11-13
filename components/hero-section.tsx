@@ -26,8 +26,8 @@ export function HeroSection() {
         {/* <div className="absolute bottom-60 right-20 w-16 h-12 bg-red-600 rounded shadow-lg transform rotate-12"></div> */}
       {/* </div> */}
 
-      <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <div className="mb-6">
+      <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center" suppressHydrationWarning>
+        <div className="mb-6" suppressHydrationWarning>
           <Badge variant="secondary" className="bg-[#eaeef6] text-[#076e32] hover:bg-[#50c879] mb-4">
             100% Online by the KSA Certified Translation
           </Badge>
@@ -42,7 +42,7 @@ export function HeroSection() {
           translation on the same day!
         </p>
 
-        <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white border-0 px-8 py-3 text-lg">
+        <Button size="lg" className="bg-[#076e32] hover:bg-[#065a2a] text-white border-0 px-8 py-3 text-lg">
           Upload Your Documents Now →
         </Button>
       </div>

@@ -24,17 +24,25 @@ export async function middleware(request: NextRequest) {
       const token = request.cookies.get("admin-token")?.value
 
       if (!token) {
+        // If accessing /admin without token, redirect to login
         return NextResponse.redirect(new URL("/admin/login", request.url))
       }
 
       const payload = await verifyJWT(token)
 
       if (!payload) {
+        // Invalid token, clear it and redirect to login
         const loginResponse = NextResponse.redirect(new URL("/admin/login", request.url))
         loginResponse.cookies.set("admin-token", "", { maxAge: 0 })
         return loginResponse
       }
 
+      // If accessing /admin root with valid token, redirect to dashboard
+      if (request.nextUrl.pathname === "/admin") {
+        return NextResponse.redirect(new URL("/admin/dashboard", request.url))
+      }
+
+      // Check role-based access for specific routes
       if (request.nextUrl.pathname.startsWith("/admin/users") && payload.role !== "SUPER_ADMIN") {
         return NextResponse.redirect(new URL("/admin/dashboard", request.url))
       }

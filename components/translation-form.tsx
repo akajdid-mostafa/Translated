@@ -179,7 +179,7 @@ export function TranslationForm() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="text-3xl font-bold text-gray-900">350 AED</div>
+                  <div className="text-3xl font-bold text-gray-900">350 DH</div>
                   <p className="text-sm text-gray-600">Service and certified your page starts in the next step</p>
 
                   <Button className="bg-blue-600 hover:bg-blue-700 text-white border-0 py-3 w-full">Continue</Button>

@@ -64,20 +64,22 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Missing file information for pre-uploaded file" }, { status: 400 });
       }
     } else if (file) {
-      // Validate file type
+      // Validate file type - Only allow PDF, Word, and TXT files
       const allowedTypes = [
-        "application/pdf",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "text/plain",
-        "image/jpeg",
-        "image/png",
-        "image/gif"
+        "application/pdf", // PDF
+        "application/msword", // DOC (Word 97-2003)
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // DOCX (Word 2007+)
+        "text/plain", // TXT
       ];
 
-      if (!allowedTypes.includes(file.type)) {
+      // Also check file extension as backup
+      const fileName = file.name.toLowerCase()
+      const allowedExtensions = ['.pdf', '.doc', '.docx', '.txt']
+      const fileExtension = fileName.substring(fileName.lastIndexOf('.'))
+      
+      if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
         return NextResponse.json(
-          { error: "File type not allowed. Please upload PDF, Word, TXT, or image files." },
+          { error: "File type not allowed. Please upload only PDF, DOC, DOCX, or TXT files." },
           { status: 400 }
         );
       }

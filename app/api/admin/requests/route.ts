@@ -8,6 +8,10 @@ const querySchema = z.object({
   limit: z.string().optional().default("10"),
   status: z.string().nullable().optional(),
   search: z.string().nullable().optional(),
+  sortBy: z.string().optional().default("date"),
+  sortOrder: z.string().optional().default("desc"),
+  dateFrom: z.string().nullable().optional(),
+  dateTo: z.string().nullable().optional(),
 })
 
 export async function GET(request: NextRequest) {
@@ -23,15 +27,20 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const { page, limit, status, search } = querySchema.parse({
+    const { page, limit, status, search, sortBy, sortOrder, dateFrom, dateTo } = querySchema.parse({
       page: searchParams.get("page"),
       limit: searchParams.get("limit"),
       status: searchParams.get("status"),
       search: searchParams.get("search"),
+      sortBy: searchParams.get("sortBy"),
+      sortOrder: searchParams.get("sortOrder"),
+      dateFrom: searchParams.get("dateFrom"),
+      dateTo: searchParams.get("dateTo"),
     })
 
-    const skip = (Number.parseInt(page) - 1) * Number.parseInt(limit)
-    const take = Number.parseInt(limit)
+    const limitNum = limit === "all" ? undefined : Number.parseInt(limit)
+    const skip = limitNum ? (Number.parseInt(page) - 1) * limitNum : 0
+    const take = limitNum
 
     const where: any = {}
 
@@ -47,12 +56,36 @@ export async function GET(request: NextRequest) {
       ]
     }
 
+    // Date filtering
+    if (dateFrom || dateTo) {
+      where.createdAt = {}
+      if (dateFrom) {
+        where.createdAt.gte = new Date(dateFrom)
+      }
+      if (dateTo) {
+        // Add one day to include the entire end date
+        const endDate = new Date(dateTo)
+        endDate.setHours(23, 59, 59, 999)
+        where.createdAt.lte = endDate
+      }
+    }
+
+    // Sorting
+    let orderBy: any = {}
+    if (sortBy === "name") {
+      orderBy = { customerName: sortOrder === "asc" ? "asc" : "desc" }
+    } else if (sortBy === "date") {
+      orderBy = { createdAt: sortOrder === "asc" ? "asc" : "desc" }
+    } else {
+      orderBy = { createdAt: "desc" }
+    }
+
     const [requests, total] = await Promise.all([
       prisma.translationRequest.findMany({
         where,
-        skip,
+        skip: take ? skip : undefined,
         take,
-        orderBy: { createdAt: "desc" },
+        orderBy,
         include: {
           statusHistory: {
             orderBy: { createdAt: "desc" },
@@ -63,13 +96,15 @@ export async function GET(request: NextRequest) {
       prisma.translationRequest.count({ where }),
     ])
 
+    const finalLimit = limitNum || total
+    
     return NextResponse.json({
       requests,
       pagination: {
         page: Number.parseInt(page),
-        limit: Number.parseInt(limit),
+        limit: finalLimit,
         total,
-        pages: Math.ceil(total / Number.parseInt(limit)),
+        pages: finalLimit > 0 ? Math.ceil(total / finalLimit) : 1,
       },
     })
   } catch (error) {

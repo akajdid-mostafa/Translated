@@ -7,8 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
-import { CheckCircle, Clock, CalendarDays, ChevronLeft, MapPin, FileText } from 'lucide-react'
+import { CheckCircle, Clock, CalendarDays, ChevronLeft, MapPin, FileText, Package } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 
 interface FormData {
   firstName: string;
@@ -35,27 +38,29 @@ function ReviewOrderContent() {
   const [formData, setFormData] = useState<FormData | null>(null);
   const [selectedDelivery, setSelectedDelivery] = useState("STANDARD"); // Default to Standard
   const [finalPrice, setFinalPrice] = useState(0);
+  const [hardCopyDelivery, setHardCopyDelivery] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState({
+    street: '',
+    city: '',
+    postalCode: '',
+    country: '',
+    deliveryInstructions: ''
+  });
 
-  useEffect(() => {
-    const data = searchParams.get('formData');
-    if (data) {
-      const parsedData: FormData = JSON.parse(data);
-      setFormData(parsedData);
-      // Set initial price based on standard delivery
-      setFinalPrice(calculatePrice(parsedData.numPages, "STANDARD"));
-    } else {
-      // Redirect back if no data is present
-      router.push('/');
+  // Map urgency from first stage to delivery option
+  const mapUrgencyToDelivery = (urgency: string): string => {
+    switch (urgency) {
+      case "EXPRESS":
+        return "SAME_DAY";
+      case "URGENT":
+        return "NEXT_DAY";
+      case "STANDARD":
+      default:
+        return "STANDARD";
     }
-  }, [searchParams, router]);
+  };
 
-  useEffect(() => {
-    if (formData) {
-      setFinalPrice(calculatePrice(formData.numPages, selectedDelivery));
-    }
-  }, [selectedDelivery, formData]);
-
-  const calculatePrice = (numPages: string, deliveryType: string) => {
+  const calculatePrice = (numPages: string, deliveryType: string, includeHardCopy: boolean = false) => {
     const pages = parseInt(numPages, 10);
     if (isNaN(pages) || pages <= 0) return 0;
 
@@ -73,8 +78,34 @@ function ReviewOrderContent() {
         basePricePerPage = 350;
         break;
     }
-    return pages * basePricePerPage;
+    
+    const translationPrice = pages * basePricePerPage;
+    const hardCopyFee = includeHardCopy ? 50 : 0; // 50 DH for hard copy delivery
+    
+    return translationPrice + hardCopyFee;
   };
+
+  useEffect(() => {
+    const data = searchParams.get('formData');
+    if (data) {
+      const parsedData: FormData = JSON.parse(data);
+      setFormData(parsedData);
+      // Map urgency to delivery option and set it
+      const mappedDelivery = mapUrgencyToDelivery(parsedData.urgency || "STANDARD");
+      setSelectedDelivery(mappedDelivery);
+      // Set initial price based on mapped delivery option
+      setFinalPrice(calculatePrice(parsedData.numPages, mappedDelivery));
+    } else {
+      // Redirect back if no data is present
+      router.push('/');
+    }
+  }, [searchParams, router]);
+
+  useEffect(() => {
+    if (formData) {
+      setFinalPrice(calculatePrice(formData.numPages, selectedDelivery, hardCopyDelivery));
+    }
+  }, [selectedDelivery, formData, hardCopyDelivery]);
 
   const handleConfirmOrder = async () => {
     if (!formData) return;
@@ -85,6 +116,15 @@ function ReviewOrderContent() {
       return;
     }
 
+    // Validate hard copy delivery address if hard copy is requested
+    if (hardCopyDelivery) {
+      if (!deliveryAddress.street.trim() || !deliveryAddress.city.trim() || 
+          !deliveryAddress.postalCode.trim() || !deliveryAddress.country.trim()) {
+        alert("Please fill in all required delivery address fields.");
+        return;
+      }
+    }
+
     try {
       // Create FormData for the new organized upload endpoint
       // Pass existing file information instead of re-downloading the file
@@ -92,7 +132,23 @@ function ReviewOrderContent() {
       formDataToSend.append('customerName', `${formData.firstName} ${formData.lastName}`);
       formDataToSend.append('customerEmail', formData.customerEmail);
       formDataToSend.append('customerPhone', formData.customerPhone);
-      formDataToSend.append('customerAddress', ''); // Add if you have this field
+      
+      // Build full delivery address if hard copy is requested
+      let fullAddress = '';
+      if (hardCopyDelivery) {
+        const addressParts = [
+          deliveryAddress.street,
+          deliveryAddress.city,
+          deliveryAddress.postalCode,
+          deliveryAddress.country
+        ].filter(part => part.trim() !== '');
+        fullAddress = addressParts.join(', ');
+        if (deliveryAddress.deliveryInstructions) {
+          fullAddress += ` (Instructions: ${deliveryAddress.deliveryInstructions})`;
+        }
+      }
+      formDataToSend.append('customerAddress', fullAddress);
+      formDataToSend.append('hardCopyDelivery', hardCopyDelivery ? 'true' : 'false');
       formDataToSend.append('sourceLanguage', formData.sourceLanguage);
       formDataToSend.append('targetLanguage', formData.targetLanguage);
       formDataToSend.append('documentType', formData.documentType);
@@ -226,7 +282,7 @@ function ReviewOrderContent() {
                   <CheckCircle className={`h-5 w-5 ${selectedDelivery === "SAME_DAY" ? "text-primary" : "text-gray-300"}`} />
                 </div>
                 <span className="block w-full text-center font-semibold mb-1">Same Day</span>
-                <span className="block w-full text-center text-sm text-gray-500">AED 550/page • Available for orders placed before 13:00 UAE Time (GST). Not available on Sundays.</span>
+                <span className="block w-full text-center text-sm text-gray-500">DH 550/page • Available for orders placed before 13:00 UAE Time (GST). Not available on Sundays.</span>
               </Label>
 
               <Label htmlFor="next-day" className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary">
@@ -236,7 +292,7 @@ function ReviewOrderContent() {
                   <CheckCircle className={`h-5 w-5 ${selectedDelivery === "NEXT_DAY" ? "text-primary" : "text-gray-300"}`} />
                 </div>
                 <span className="block w-full text-center font-semibold mb-1">Next Day</span>
-                <span className="block w-full text-center text-sm text-gray-500">AED 450/page • Available for orders placed before 18:00 UAE Time (GST). Not available on Saturdays.</span>
+                <span className="block w-full text-center text-sm text-gray-500">DH 450/page • Available for orders placed before 18:00 UAE Time (GST). Not available on Saturdays.</span>
               </Label>
 
               <Label htmlFor="standard" className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary">
@@ -246,7 +302,7 @@ function ReviewOrderContent() {
                   <CheckCircle className={`h-5 w-5 ${selectedDelivery === "STANDARD" ? "text-primary" : "text-gray-300"}`} />
                 </div>
                 <span className="block w-full text-center font-semibold mb-1">Standard</span>
-                <span className="block w-full text-center text-sm text-gray-500">AED 350/page • 3 business days delivery</span>
+                <span className="block w-full text-center text-sm text-gray-500">DH 350/page • 3 business days delivery</span>
               </Label>
             </RadioGroup>
             
@@ -262,13 +318,96 @@ function ReviewOrderContent() {
         {/* Hard Copy Delivery (Optional) */}
         <Card>
           <CardHeader>
-            <CardTitle>Hard Copy Delivery</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="w-5 h-5" />
+              Hard Copy Delivery
+            </CardTitle>
             <CardDescription>Receive a professionally printed and stamped copy of your translation</CardDescription>
           </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <Label htmlFor="hard-copy-toggle">Request Hard Copy</Label>
-            {/* You would integrate a Toggle component here */}
-            <Badge variant="secondary">Coming Soon</Badge>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="hard-copy-toggle" className="text-base font-medium">
+                Request Hard Copy Delivery
+              </Label>
+              <Switch
+                id="hard-copy-toggle"
+                checked={hardCopyDelivery}
+                onCheckedChange={setHardCopyDelivery}
+              />
+            </div>
+            
+            {hardCopyDelivery && (
+              <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <MapPin className="w-5 h-5 text-blue-600" />
+                  <h3 className="font-semibold text-gray-900">Delivery Address</h3>
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="street">Street Address *</Label>
+                    <Input
+                      id="street"
+                      placeholder="Enter street address"
+                      value={deliveryAddress.street}
+                      onChange={(e) => setDeliveryAddress({ ...deliveryAddress, street: e.target.value })}
+                      required={hardCopyDelivery}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="city">City *</Label>
+                      <Input
+                        id="city"
+                        placeholder="Enter city"
+                        value={deliveryAddress.city}
+                        onChange={(e) => setDeliveryAddress({ ...deliveryAddress, city: e.target.value })}
+                        required={hardCopyDelivery}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="postalCode">Postal Code *</Label>
+                      <Input
+                        id="postalCode"
+                        placeholder="Enter postal code"
+                        value={deliveryAddress.postalCode}
+                        onChange={(e) => setDeliveryAddress({ ...deliveryAddress, postalCode: e.target.value })}
+                        required={hardCopyDelivery}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Country *</Label>
+                    <Input
+                      id="country"
+                      placeholder="Enter country"
+                      value={deliveryAddress.country}
+                      onChange={(e) => setDeliveryAddress({ ...deliveryAddress, country: e.target.value })}
+                      required={hardCopyDelivery}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="deliveryInstructions">Delivery Instructions (Optional)</Label>
+                    <Textarea
+                      id="deliveryInstructions"
+                      placeholder="Any special delivery instructions (e.g., building name, floor, contact person)"
+                      value={deliveryAddress.deliveryInstructions}
+                      onChange={(e) => setDeliveryAddress({ ...deliveryAddress, deliveryInstructions: e.target.value })}
+                      rows={3}
+                    />
+                  </div>
+                </div>
+                
+                <div className="mt-4 p-3 bg-blue-100 rounded-md text-sm text-blue-800">
+                  <p className="font-semibold">Hard Copy Delivery Fee: 50 DH</p>
+                  <p className="text-xs mt-1">This fee covers printing, stamping, and delivery of your certified translation.</p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -279,13 +418,19 @@ function ReviewOrderContent() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex justify-between text-sm">
-              <span>Translation Price ({formData.numPages} pages x {calculatePrice("1", selectedDelivery)} AED per page):</span>
-              <span>{finalPrice} AED</span>
+              <span>Translation Price ({formData.numPages} pages x {calculatePrice("1", selectedDelivery, false)} DH per page):</span>
+              <span>{calculatePrice(formData.numPages, selectedDelivery, false)} DH</span>
             </div>
+            {hardCopyDelivery && (
+              <div className="flex justify-between text-sm">
+                <span>Hard Copy Delivery Fee:</span>
+                <span>50 DH</span>
+              </div>
+            )}
             <Separator />
             <div className="flex justify-between font-bold text-lg">
               <span>Total Price:</span>
-              <span>{finalPrice} AED</span>
+              <span>{finalPrice} DH</span>
             </div>
             <p className="text-xs text-gray-500">* Prices do not include 5% VAT.</p>
             <p className="text-xs text-gray-500">* By proceeding to pay, you agree to our <a href="#" className="underline">Terms of Use</a> & <a href="#" className="underline">Privacy Policy</a>.</p>

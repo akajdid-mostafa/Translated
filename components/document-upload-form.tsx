@@ -104,6 +104,34 @@ export function DocumentUploadForm() {
       return;
     }
     
+    // Validate file types - Only allow PDF, Word, and TXT files
+    const allowedTypes = [
+      "application/pdf", // PDF
+      "application/msword", // DOC (Word 97-2003)
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // DOCX (Word 2007+)
+      "text/plain", // TXT
+    ];
+    
+    const allowedExtensions = ['.pdf', '.doc', '.docx', '.txt'];
+    
+    // Filter out invalid files
+    const validFiles = files.filter(file => {
+      const fileName = file.name.toLowerCase();
+      const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
+      const isValidType = allowedTypes.includes(file.type);
+      const isValidExtension = allowedExtensions.includes(fileExtension);
+      
+      if (!isValidType && !isValidExtension) {
+        alert(`File "${file.name}" is not a supported format. Please upload only PDF, DOC, DOCX, or TXT files.`);
+        return false;
+      }
+      return true;
+    });
+    
+    if (validFiles.length === 0) {
+      return;
+    }
+    
     // Generate a temporary request ID for organized file storage
     let tempRequestId: string | null = null;
     try {
@@ -117,7 +145,7 @@ export function DocumentUploadForm() {
       console.warn("Failed to generate temporary request ID, files will be uploaded to fallback folder:", error);
     }
     
-    for (const file of files) {
+    for (const file of validFiles) {
       const fileId = Math.random().toString(36).substr(2, 9);
       const uploadedFile: UploadedFile = {
         file,
@@ -311,9 +339,9 @@ export function DocumentUploadForm() {
   };
 
   return (
-    <section className="py-16 bg-white">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <form onSubmit={handleSubmit} className="space-y-8">
+    <section className="py-16 bg-white" suppressHydrationWarning>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8" suppressHydrationWarning>
+        <form onSubmit={handleSubmit} className="space-y-8" suppressHydrationWarning>
           {/* Upload Documents Section */}
           <Card>
             <CardHeader>
