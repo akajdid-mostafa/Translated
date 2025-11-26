@@ -27,11 +27,27 @@ export const uploadToCloudinary = async (file: Buffer, fileName: string, request
   }
 
   // Create folder structure based on request ID
-  const folder = requestId 
-    ? `translated-ae/requests/${requestId}`
+  // Sanitize requestId to ensure it's valid for Cloudinary folder names
+  const sanitizedRequestId = requestId 
+    ? requestId.replace(/[^a-zA-Z0-9_\-]/g, '_').replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '')
+    : undefined;
+  
+  const folder = sanitizedRequestId 
+    ? `translated-ae/requests/${sanitizedRequestId}`
     : "translated-ae/documents";
 
-  const publicId = `${Date.now()}-${fileName.replace(/\.[^/.]+$/, "")}`;
+  // Sanitize filename for Cloudinary public_id
+  // Cloudinary public_id can only contain: alphanumeric, underscore, hyphen, forward slash
+  // Remove file extension first
+  const fileNameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
+  // Replace invalid characters with underscore
+  // Invalid characters: spaces, parentheses, ampersands, special chars, accented chars
+  const sanitizedFileName = fileNameWithoutExt
+    .replace(/[^a-zA-Z0-9_\-/]/g, '_') // Replace all non-allowed chars with underscore
+    .replace(/_{2,}/g, '_') // Replace multiple underscores with single
+    .replace(/^_+|_+$/g, ''); // Remove leading/trailing underscores
+  
+  const publicId = `${Date.now()}-${sanitizedFileName}`;
   
   // Determine resource type based on file extension
   // PDFs, Word documents, and TXT files should be uploaded as "raw", not "auto"

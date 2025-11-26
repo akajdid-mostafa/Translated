@@ -1,64 +1,99 @@
-import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Shield, Clock, Award, Users, Zap, Globe } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { CheckCircle2, BookOpen, Clock, Lock, Upload, Calculator, Shield, FileText, Handshake } from "lucide-react"
 
 export function ServicesSection() {
   return (
-    <section id="services" className="py-16 bg-gray-50" suppressHydrationWarning>
+    <section id="services" className="py-16 bg-white" suppressHydrationWarning>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" suppressHydrationWarning>
-        {/* Main Title */}
-        <div className="text-center mb-16" suppressHydrationWarning>
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">
-            Fast, Accurate & Certified Legal Translation Services in the UAE
-          </h2>
-          <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-            Whether you're an individual, a business, or a government entity, we have the right solution for you. Our
-            expert translators are certified and experienced in handling all types of legal documents.
-          </p>
+        {/* Service Features Grid */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-20" suppressHydrationWarning>
+          <Card className="text-left border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+            <CardContent className="p-6">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4" suppressHydrationWarning>
+                <CheckCircle2 className="w-6 h-6 text-[#076e32]" />
+              </div>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Legal & Certified</h3>
+              <p className="text-gray-600 text-sm leading-relaxed">Officially recognized translations for government, courts, universities, and employers.</p>
+            </CardContent>
+          </Card>
+
+          <Card className="text-left border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+            <CardContent className="p-6">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4" suppressHydrationWarning>
+                <BookOpen className="w-6 h-6 text-[#076e32]" />
+              </div>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Expert Linguists</h3>
+              <p className="text-gray-600 text-sm leading-relaxed">Native translators with legal specialization and double review for quality.</p>
+            </CardContent>
+          </Card>
+
+          <Card className="text-left border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+            <CardContent className="p-6">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4" suppressHydrationWarning>
+                <Clock className="w-6 h-6 text-[#076e32]" />
+              </div>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Fast Turnaround</h3>
+              <p className="text-gray-600 text-sm leading-relaxed">Same-Day & Next-Day options with clear cut-offs and guaranteed SLAs.</p>
+            </CardContent>
+          </Card>
+
+          <Card className="text-left border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+            <CardContent className="p-6">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4" suppressHydrationWarning>
+                <Lock className="w-6 h-6 text-[#076e32]" />
+              </div>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Secure & Private</h3>
+              <p className="text-gray-600 text-sm leading-relaxed">Secure uploads, strict confidentiality, and data purge policies.</p>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Service Features Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-16" suppressHydrationWarning>
-          <Card className="text-center border-0 shadow-sm">
-            <CardContent className="p-6">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
-                <Shield className="w-8 h-8 text-blue-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Legal & Certified</h3>
-              <p className="text-gray-600 text-sm">Officially recognized translations for all legal purposes</p>
-            </CardContent>
-          </Card>
+        {/* How it works Section */}
+        <div id="how-it-works" className="mb-20" suppressHydrationWarning>
+          <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">How it works</h2>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6" suppressHydrationWarning>
+            <Card className="text-center border border-gray-200 shadow-sm">
+              <CardContent className="p-6">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
+                  <Upload className="w-8 h-8 text-[#076e32]" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">1 · Upload</h3>
+                <p className="text-gray-600 text-sm">Upload file(s), choose languages, turnaround, and options.</p>
+              </CardContent>
+            </Card>
 
-          <Card className="text-center border-0 shadow-sm">
-            <CardContent className="p-6">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Clock className="w-8 h-8 text-green-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Expert Linguists</h3>
-              <p className="text-gray-600 text-sm">Native speakers with legal translation expertise</p>
-            </CardContent>
-          </Card>
+            <Card className="text-center border border-gray-200 shadow-sm">
+              <CardContent className="p-6">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
+                  <Calculator className="w-8 h-8 text-[#076e32]" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">2 · Instant price</h3>
+                <p className="text-gray-600 text-sm">Transparent per-page pricing; add Sworn/Hard copy if needed.</p>
+              </CardContent>
+            </Card>
 
-          <Card className="text-center border-0 shadow-sm">
-            <CardContent className="p-6">
-              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Zap className="w-8 h-8 text-purple-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Fast Turnaround</h3>
-              <p className="text-gray-600 text-sm">Receive your documents within the same working day</p>
-            </CardContent>
-          </Card>
+            <Card className="text-center border border-gray-200 shadow-sm">
+              <CardContent className="p-6">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
+                  <Shield className="w-8 h-8 text-[#076e32]" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">3 · Pay securely</h3>
+                <p className="text-gray-600 text-sm">Mada, Apple Pay, STC Pay — hosted checkout.</p>
+              </CardContent>
+            </Card>
 
-          <Card className="text-center border-0 shadow-sm">
-            <CardContent className="p-6">
-              <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Award className="w-8 h-8 text-orange-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Secure & Confidential</h3>
-              <p className="text-gray-600 text-sm">We prioritize the security of your personal documents</p>
-            </CardContent>
-          </Card>
+            <Card className="text-center border border-gray-200 shadow-sm">
+              <CardContent className="p-6">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
+                  <FileText className="w-8 h-8 text-[#076e32]" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">4 · Receive</h3>
+                <p className="text-gray-600 text-sm">Get the digital PDF. Optional hard copy delivered to your address.</p>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Language Support */}
@@ -134,34 +169,52 @@ export function ServicesSection() {
           <Button className="bg-[#076e32] hover:bg-[#065a2a] text-white border-0">Contact Us</Button>
         </div>
 
-        {/* Statistics */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm" suppressHydrationWarning>
-          <h3 className="text-2xl font-bold text-center text-gray-900 mb-8">Our Achievements at a Glance</h3>
+        {/* Our Achievements at a Glance */}
+        <div className="mb-12" suppressHydrationWarning>
+          <div className="flex items-center gap-2 justify-center mb-4" suppressHydrationWarning>
+            <Handshake className="w-6 h-6 text-[#076e32]" />
+            <h3 className="text-2xl font-bold text-gray-900">Our Achievements at a Glance</h3>
+          </div>
+          <p className="text-center text-gray-600 mb-8">
+            Trusted across KSA for fast, accurate and officially recognized translations.
+          </p>
 
-          <div className="grid md:grid-cols-3 gap-8 text-center" suppressHydrationWarning>
-            <div suppressHydrationWarning>
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
-                <Users className="w-8 h-8 text-blue-600" />
-              </div>
-              <div className="text-3xl font-bold text-gray-900 mb-2" suppressHydrationWarning>10,240+</div>
-              <p className="text-gray-600">Happy Customers</p>
-            </div>
+          <div className="grid md:grid-cols-3 gap-6 mb-6" suppressHydrationWarning>
+            <Card className="text-center border border-gray-200 shadow-sm">
+              <CardContent className="p-6">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
+                  <FileText className="w-8 h-8 text-[#076e32]" />
+                </div>
+                <div className="text-3xl font-bold text-gray-900 mb-2" suppressHydrationWarning>24,000+</div>
+                <p className="text-gray-600">Certified Documents Delivered</p>
+              </CardContent>
+            </Card>
 
-            <div suppressHydrationWarning>
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
-                <Globe className="w-8 h-8 text-green-600" />
-              </div>
-              <div className="text-3xl font-bold text-gray-900 mb-2" suppressHydrationWarning>1600+</div>
-              <p className="text-gray-600">Happy Clients</p>
-            </div>
+            <Card className="text-center border border-gray-200 shadow-sm">
+              <CardContent className="p-6">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
+                  <Handshake className="w-8 h-8 text-[#076e32]" />
+                </div>
+                <div className="text-3xl font-bold text-gray-900 mb-2" suppressHydrationWarning>3,200+</div>
+                <p className="text-gray-600">Happy Clients Across KSA</p>
+              </CardContent>
+            </Card>
 
-            <div suppressHydrationWarning>
-              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
-                <Award className="w-8 h-8 text-purple-600" />
-              </div>
-              <div className="text-3xl font-bold text-gray-900 mb-2" suppressHydrationWarning>30+</div>
-              <p className="text-gray-600">Native Languages</p>
-            </div>
+            <Card className="text-center border border-gray-200 shadow-sm">
+              <CardContent className="p-6">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4" suppressHydrationWarning>
+                  <BookOpen className="w-8 h-8 text-[#076e32]" />
+                </div>
+                <div className="text-3xl font-bold text-gray-900 mb-2" suppressHydrationWarning>60+</div>
+                <p className="text-gray-600">Sworn & Native Linguists</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="text-center text-gray-700" suppressHydrationWarning>
+            <p className="text-sm">
+              <strong>98.7% On-Time Delivery</strong> • <strong>Confidential & Secure</strong> • <strong>Transparent Pricing (1 page = 250 words)</strong>
+            </p>
           </div>
         </div>
       </div>

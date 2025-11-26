@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface FormData {
   firstName: string;
@@ -30,6 +31,13 @@ interface FormData {
   fileUrl: string;
   fileSize: string;
   fileType: string;
+  hardCopy?: boolean;
+  hardCopyDelivery?: string;
+  deliveryAddress?: string;
+  deliveryCity?: string;
+  deliveryPostalCode?: string;
+  deliveryCountry?: string;
+  deliveryInstructions?: string;
 }
 
 function ReviewOrderContent() {
@@ -39,6 +47,7 @@ function ReviewOrderContent() {
   const [selectedDelivery, setSelectedDelivery] = useState("STANDARD"); // Default to Standard
   const [finalPrice, setFinalPrice] = useState(0);
   const [hardCopyDelivery, setHardCopyDelivery] = useState(false);
+  const [hardCopyDeliveryType, setHardCopyDeliveryType] = useState("STANDARD");
   const [deliveryAddress, setDeliveryAddress] = useState({
     street: '',
     city: '',
@@ -60,7 +69,7 @@ function ReviewOrderContent() {
     }
   };
 
-  const calculatePrice = (numPages: string, deliveryType: string, includeHardCopy: boolean = false) => {
+  const calculatePrice = (numPages: string, deliveryType: string, includeHardCopy: boolean = false, hardCopyDeliveryType: string = "STANDARD") => {
     const pages = parseInt(numPages, 10);
     if (isNaN(pages) || pages <= 0) return 0;
 
@@ -80,7 +89,13 @@ function ReviewOrderContent() {
     }
     
     const translationPrice = pages * basePricePerPage;
-    const hardCopyFee = includeHardCopy ? 50 : 0; // 50 DH for hard copy delivery
+    let hardCopyFee = 0;
+    if (includeHardCopy) {
+      hardCopyFee = 50; // Base hard copy fee
+      if (hardCopyDeliveryType === "EXPRESS") {
+        hardCopyFee += 30; // Additional express delivery fee
+      }
+    }
     
     return translationPrice + hardCopyFee;
   };
@@ -93,8 +108,35 @@ function ReviewOrderContent() {
       // Map urgency to delivery option and set it
       const mappedDelivery = mapUrgencyToDelivery(parsedData.urgency || "STANDARD");
       setSelectedDelivery(mappedDelivery);
+      // Set hard copy delivery state if it was selected in the form
+      if (parsedData.hardCopy) {
+        setHardCopyDelivery(true);
+        setHardCopyDeliveryType(parsedData.hardCopyDelivery || "STANDARD");
+        // Parse delivery address if it exists
+        if (parsedData.deliveryAddress) {
+          // Try to parse the address if it's in the format "street, city, postal, country"
+          const addressParts = parsedData.deliveryAddress.split(', ');
+          if (addressParts.length >= 4) {
+            setDeliveryAddress({
+              street: addressParts[0] || '',
+              city: parsedData.deliveryCity || addressParts[1] || '',
+              postalCode: parsedData.deliveryPostalCode || addressParts[2] || '',
+              country: parsedData.deliveryCountry || addressParts[3] || '',
+              deliveryInstructions: parsedData.deliveryInstructions || ''
+            });
+          } else {
+            setDeliveryAddress({
+              street: parsedData.deliveryAddress || '',
+              city: parsedData.deliveryCity || '',
+              postalCode: parsedData.deliveryPostalCode || '',
+              country: parsedData.deliveryCountry || '',
+              deliveryInstructions: parsedData.deliveryInstructions || ''
+            });
+          }
+        }
+      }
       // Set initial price based on mapped delivery option
-      setFinalPrice(calculatePrice(parsedData.numPages, mappedDelivery));
+      setFinalPrice(calculatePrice(parsedData.numPages, mappedDelivery, parsedData.hardCopy || false));
     } else {
       // Redirect back if no data is present
       router.push('/');
@@ -103,9 +145,9 @@ function ReviewOrderContent() {
 
   useEffect(() => {
     if (formData) {
-      setFinalPrice(calculatePrice(formData.numPages, selectedDelivery, hardCopyDelivery));
+      setFinalPrice(calculatePrice(formData.numPages, selectedDelivery, hardCopyDelivery, hardCopyDeliveryType));
     }
-  }, [selectedDelivery, formData, hardCopyDelivery]);
+  }, [selectedDelivery, formData, hardCopyDelivery, hardCopyDeliveryType]);
 
   const handleConfirmOrder = async () => {
     if (!formData) return;
@@ -149,6 +191,7 @@ function ReviewOrderContent() {
       }
       formDataToSend.append('customerAddress', fullAddress);
       formDataToSend.append('hardCopyDelivery', hardCopyDelivery ? 'true' : 'false');
+      formDataToSend.append('hardCopyDeliveryType', hardCopyDeliveryType);
       formDataToSend.append('sourceLanguage', formData.sourceLanguage);
       formDataToSend.append('targetLanguage', formData.targetLanguage);
       formDataToSend.append('documentType', formData.documentType);
@@ -193,255 +236,320 @@ function ReviewOrderContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <CheckCircle className="w-6 h-6 text-blue-600" />
-            <h1 className="text-2xl font-bold text-gray-900">Review Your Order</h1>
-          </div>
-          <Button variant="outline" onClick={() => router.back()}>
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="mb-8" suppressHydrationWarning>
+          <div className="flex items-center justify-between mb-4" suppressHydrationWarning>
+            <h1 className="text-3xl font-bold text-gray-900">Review Your Order</h1>
+            <Button variant="ghost" onClick={() => router.back()} className="text-gray-600">
             <ChevronLeft className="w-4 h-4 mr-2" /> Back
           </Button>
         </div>
         <p className="text-gray-600">Double-check your details before placing the order.</p>
+        </div>
 
-        {/* Order Details */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Order Details</CardTitle>
-            <Button variant="ghost" size="sm">Edit</Button>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-            <div className="flex items-center space-x-2">
-              <Badge variant="secondary"><CheckCircle className="w-3 h-3" /></Badge>
-              <span>Source Language: <strong>{formData.sourceLanguage}</strong></span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="secondary"><CheckCircle className="w-3 h-3" /></Badge>
-              <span>Target Language: <strong>{formData.targetLanguage}</strong></span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="secondary"><CheckCircle className="w-3 h-3" /></Badge>
-              <span>Document Type: <strong>{formData.documentType}</strong></span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="secondary"><CheckCircle className="w-3 h-3" /></Badge>
-              <span>Number of Pages: <strong>{formData.numPages}</strong></span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="secondary"><CheckCircle className="w-3 h-3" /></Badge>
-              <span>Full Name: <strong>{formData.firstName} {formData.lastName}</strong></span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="secondary"><CheckCircle className="w-3 h-3" /></Badge>
-              <span>Email: <strong>{formData.customerEmail}</strong></span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="secondary"><CheckCircle className="w-3 h-3" /></Badge>
-              <span>Phone Number: <strong>{formData.customerPhone}</strong></span>
-            </div>
-            {formData.additionalNotes && (
-              <div className="flex items-start space-x-2 lg:col-span-3">
-                <Badge variant="secondary"><CheckCircle className="w-3 h-3 mt-1" /></Badge>
-                <span>Special Instructions: <strong>{formData.additionalNotes}</strong></span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" suppressHydrationWarning>
+          {/* Left Column: Order Details */}
+          <div className="lg:col-span-2 space-y-6" suppressHydrationWarning>
 
-        {/* Uploaded Files */}
-        <Card>
+            {/* Order Summary */}
+            <Card className="border border-gray-200">
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold">Order Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-500 mb-1">From</p>
+                    <p className="font-medium">{formData.sourceLanguage}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">To</p>
+                    <p className="font-medium">{formData.targetLanguage}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Document Type</p>
+                    <p className="font-medium">{formData.documentType}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Pages</p>
+                    <p className="font-medium">{formData.numPages}</p>
+                  </div>
+                  {hardCopyDelivery && (
+                    <div className="col-span-2">
+                      <p className="text-gray-500 mb-1">Hard Copy</p>
+                      <p className="font-medium text-[#076e32]">
+                        ✓ Selected ({hardCopyDeliveryType === "EXPRESS" ? "Express" : "Standard"} Delivery)
+                      </p>
+                    </div>
+                  )}
+                </div>
+                
+                {formData.originalFileName && formData.fileUrl && (
+                  <div className="pt-4 border-t">
+                    <p className="text-gray-500 mb-2 text-sm">Uploaded File</p>
+                    <a href={formData.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-sm text-[#076e32] hover:underline">
+                      <FileText className="w-4 h-4" />
+                      <span>{formData.originalFileName}</span>
+                      <Badge variant="outline" className="ml-auto">{ (parseFloat(formData.fileSize) / (1024 * 1024)).toFixed(2) } MB</Badge>
+                    </a>
+                  </div>
+                )}
+                
+                {formData.additionalNotes && (
+                  <div className="pt-4 border-t">
+                    <p className="text-gray-500 mb-1 text-sm">Special Instructions</p>
+                    <p className="text-sm text-gray-700">{formData.additionalNotes}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Delivery Time Selection */}
+            <Card className="border border-gray-200">
           <CardHeader>
-            <CardTitle>Uploaded Files</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {formData.originalFileName && formData.fileUrl && (
-              <a href={formData.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
-                <FileText className="w-5 h-5 text-blue-600" />
-                <span className="font-medium text-blue-800">{formData.originalFileName}</span>
-                <Badge variant="secondary">{ (parseFloat(formData.fileSize) / (1024 * 1024)).toFixed(2) } MB</Badge>
-              </a>
-            )}
-            {!formData.originalFileName && <p className="text-gray-500">No file uploaded.</p>}
-          </CardContent>
-        </Card>
-
-        {/* Choose Your Delivery Time */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Choose Your Delivery Time</CardTitle>
-            <CardDescription>When would you like to receive your digital scanned copy?</CardDescription>
+                <CardTitle className="text-lg font-semibold">Choose Your Delivery Time</CardTitle>
+                <CardDescription className="text-sm">When would you like to receive your digital scanned copy?</CardDescription>
           </CardHeader>
           <CardContent>
             <RadioGroup value={selectedDelivery} onValueChange={setSelectedDelivery} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Label htmlFor="same-day" className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary">
+                  <Label htmlFor="same-day" className={`flex flex-col items-center justify-between rounded-lg border-2 p-4 cursor-pointer transition-all ${
+                    selectedDelivery === "SAME_DAY" 
+                      ? "border-[#076e32] bg-green-50" 
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}>
                 <RadioGroupItem value="SAME_DAY" id="same-day" className="sr-only" />
                 <div className="flex items-center justify-between w-full mb-3">
-                  <Clock className="h-6 w-6" />
-                  <CheckCircle className={`h-5 w-5 ${selectedDelivery === "SAME_DAY" ? "text-primary" : "text-gray-300"}`} />
+                      <Clock className={`h-6 w-6 ${selectedDelivery === "SAME_DAY" ? "text-[#076e32]" : "text-gray-400"}`} />
+                      <CheckCircle className={`h-5 w-5 ${selectedDelivery === "SAME_DAY" ? "text-[#076e32]" : "text-gray-300"}`} />
                 </div>
-                <span className="block w-full text-center font-semibold mb-1">Same Day</span>
-                <span className="block w-full text-center text-sm text-gray-500">DH 550/page • Available for orders placed before 13:00 UAE Time (GST). Not available on Sundays.</span>
+                    <span className="block w-full text-center font-semibold mb-1 text-gray-900">Same Day</span>
+                    <span className="block w-full text-center text-xs text-gray-500">SAR 550/page • Before 12:00 AST</span>
               </Label>
 
-              <Label htmlFor="next-day" className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary">
+                  <Label htmlFor="next-day" className={`flex flex-col items-center justify-between rounded-lg border-2 p-4 cursor-pointer transition-all ${
+                    selectedDelivery === "NEXT_DAY" 
+                      ? "border-[#076e32] bg-green-50" 
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}>
                 <RadioGroupItem value="NEXT_DAY" id="next-day" className="sr-only" />
                 <div className="flex items-center justify-between w-full mb-3">
-                  <CalendarDays className="h-6 w-6" />
-                  <CheckCircle className={`h-5 w-5 ${selectedDelivery === "NEXT_DAY" ? "text-primary" : "text-gray-300"}`} />
+                      <CalendarDays className={`h-6 w-6 ${selectedDelivery === "NEXT_DAY" ? "text-[#076e32]" : "text-gray-400"}`} />
+                      <CheckCircle className={`h-5 w-5 ${selectedDelivery === "NEXT_DAY" ? "text-[#076e32]" : "text-gray-300"}`} />
                 </div>
-                <span className="block w-full text-center font-semibold mb-1">Next Day</span>
-                <span className="block w-full text-center text-sm text-gray-500">DH 450/page • Available for orders placed before 18:00 UAE Time (GST). Not available on Saturdays.</span>
+                    <span className="block w-full text-center font-semibold mb-1 text-gray-900">Next Day</span>
+                    <span className="block w-full text-center text-xs text-gray-500">SAR 450/page • Before 18:00 AST</span>
               </Label>
 
-              <Label htmlFor="standard" className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary">
+                  <Label htmlFor="standard" className={`flex flex-col items-center justify-between rounded-lg border-2 p-4 cursor-pointer transition-all ${
+                    selectedDelivery === "STANDARD" 
+                      ? "border-[#076e32] bg-green-50" 
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}>
                 <RadioGroupItem value="STANDARD" id="standard" className="sr-only" />
                 <div className="flex items-center justify-between w-full mb-3">
-                  <MapPin className="h-6 w-6" />
-                  <CheckCircle className={`h-5 w-5 ${selectedDelivery === "STANDARD" ? "text-primary" : "text-gray-300"}`} />
+                      <MapPin className={`h-6 w-6 ${selectedDelivery === "STANDARD" ? "text-[#076e32]" : "text-gray-400"}`} />
+                      <CheckCircle className={`h-5 w-5 ${selectedDelivery === "STANDARD" ? "text-[#076e32]" : "text-gray-300"}`} />
                 </div>
-                <span className="block w-full text-center font-semibold mb-1">Standard</span>
-                <span className="block w-full text-center text-sm text-gray-500">DH 350/page • 3 business days delivery</span>
+                    <span className="block w-full text-center font-semibold mb-1 text-gray-900">Standard</span>
+                    <span className="block w-full text-center text-xs text-gray-500">SAR 350/page • 3 business days</span>
               </Label>
             </RadioGroup>
-            
-            {selectedDelivery === "SAME_DAY" && (
-              <div className="mt-4 p-3 bg-yellow-50 text-yellow-800 rounded-md text-sm">
-                <p className="font-semibold">In a Hurry? We've Got You Covered</p>
-                <p>Urgent translations (within 1-4 hours) are possible based on the complexity of the document and the number of pages. <a href="#" className="underline">Contact us to learn more.</a></p>
-              </div>
-            )}
           </CardContent>
         </Card>
 
-        {/* Hard Copy Delivery (Optional) */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="w-5 h-5" />
-              Hard Copy Delivery
-            </CardTitle>
-            <CardDescription>Receive a professionally printed and stamped copy of your translation</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="hard-copy-toggle" className="text-base font-medium">
-                Request Hard Copy Delivery
-              </Label>
-              <Switch
-                id="hard-copy-toggle"
-                checked={hardCopyDelivery}
-                onCheckedChange={setHardCopyDelivery}
-              />
-            </div>
-            
-            {hardCopyDelivery && (
-              <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <MapPin className="w-5 h-5 text-blue-600" />
-                  <h3 className="font-semibold text-gray-900">Delivery Address</h3>
+            {/* Hard Copy Delivery - Display and Edit */}
+            <Card className="border border-gray-200">
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                  <Package className="w-5 h-5" />
+                  Hard Copy Delivery
+                </CardTitle>
+                <CardDescription className="text-sm">
+                  {hardCopyDelivery 
+                    ? "Review or update your hard copy delivery details" 
+                    : "Add hard copy delivery if needed"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="hard-copy-toggle" className="text-sm font-medium cursor-pointer">
+                    Add hard copy (paper)
+                  </Label>
+                  <Switch
+                    id="hard-copy-toggle"
+                    checked={hardCopyDelivery}
+                    onCheckedChange={setHardCopyDelivery}
+                  />
                 </div>
                 
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="street">Street Address *</Label>
-                    <Input
-                      id="street"
-                      placeholder="Enter street address"
-                      value={deliveryAddress.street}
-                      onChange={(e) => setDeliveryAddress({ ...deliveryAddress, street: e.target.value })}
-                      required={hardCopyDelivery}
-                    />
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="city">City *</Label>
-                      <Input
-                        id="city"
-                        placeholder="Enter city"
-                        value={deliveryAddress.city}
-                        onChange={(e) => setDeliveryAddress({ ...deliveryAddress, city: e.target.value })}
-                        required={hardCopyDelivery}
-                      />
+                {hardCopyDelivery && (
+                  <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
+                    <div className="space-y-2" suppressHydrationWarning>
+                      <Label htmlFor="hardCopyDeliveryType" className="text-sm font-medium">Delivery Type</Label>
+                      <Select
+                        value={hardCopyDeliveryType}
+                        onValueChange={setHardCopyDeliveryType}
+                      >
+                        <SelectTrigger className="text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="STANDARD">Standard</SelectItem>
+                          <SelectItem value="EXPRESS">Express</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     
-                    <div className="space-y-2">
-                      <Label htmlFor="postalCode">Postal Code *</Label>
-                      <Input
-                        id="postalCode"
-                        placeholder="Enter postal code"
-                        value={deliveryAddress.postalCode}
-                        onChange={(e) => setDeliveryAddress({ ...deliveryAddress, postalCode: e.target.value })}
-                        required={hardCopyDelivery}
-                      />
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="street" className="text-sm font-medium">Delivery Address *</Label>
+                        <Input
+                          id="street"
+                          placeholder="Street address"
+                          value={deliveryAddress.street}
+                          onChange={(e) => setDeliveryAddress({ ...deliveryAddress, street: e.target.value })}
+                          required={hardCopyDelivery}
+                          className="text-sm"
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Input
+                            id="city"
+                            placeholder="City"
+                            value={deliveryAddress.city}
+                            onChange={(e) => setDeliveryAddress({ ...deliveryAddress, city: e.target.value })}
+                            required={hardCopyDelivery}
+                            className="text-sm"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Input
+                            id="postalCode"
+                            placeholder="Postal Code"
+                            value={deliveryAddress.postalCode}
+                            onChange={(e) => setDeliveryAddress({ ...deliveryAddress, postalCode: e.target.value })}
+                            required={hardCopyDelivery}
+                            className="text-sm"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Input
+                          id="country"
+                          placeholder="Country"
+                          value={deliveryAddress.country}
+                          onChange={(e) => setDeliveryAddress({ ...deliveryAddress, country: e.target.value })}
+                          required={hardCopyDelivery}
+                          className="text-sm"
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="deliveryInstructions" className="text-sm">Delivery Instructions (Optional)</Label>
+                        <Textarea
+                          id="deliveryInstructions"
+                          placeholder="Any special delivery instructions"
+                          value={deliveryAddress.deliveryInstructions}
+                          onChange={(e) => setDeliveryAddress({ ...deliveryAddress, deliveryInstructions: e.target.value })}
+                          rows={2}
+                          className="text-sm"
+                        />
+                      </div>
                     </div>
+                    
+                    <p className="text-xs text-gray-500 pt-2 border-t">
+                      Digital PDF is always included for free. Hard copy fee: 50 SAR
+                    </p>
                   </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="country">Country *</Label>
-                    <Input
-                      id="country"
-                      placeholder="Enter country"
-                      value={deliveryAddress.country}
-                      onChange={(e) => setDeliveryAddress({ ...deliveryAddress, country: e.target.value })}
-                      required={hardCopyDelivery}
-                    />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Column: Price Summary & Payment */}
+          <div className="lg:col-span-1" suppressHydrationWarning>
+            <Card className="border border-gray-200 sticky top-4" suppressHydrationWarning>
+          <CardHeader>
+                <div className="flex items-center justify-between" suppressHydrationWarning>
+                  <CardTitle className="text-lg font-semibold">Total (SAR)</CardTitle>
+                  <Separator className="flex-1 mx-2" />
+                </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+                <div className="space-y-3" suppressHydrationWarning>
+                  <div className="flex justify-between text-sm" suppressHydrationWarning>
+                    <span className="text-gray-600">Translation ({formData.numPages} pages × {calculatePrice("1", selectedDelivery, false)} SAR):</span>
+                    <span className="font-medium">{calculatePrice(formData.numPages, selectedDelivery, false)} SAR</span>
                   </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="deliveryInstructions">Delivery Instructions (Optional)</Label>
-                    <Textarea
-                      id="deliveryInstructions"
-                      placeholder="Any special delivery instructions (e.g., building name, floor, contact person)"
-                      value={deliveryAddress.deliveryInstructions}
-                      onChange={(e) => setDeliveryAddress({ ...deliveryAddress, deliveryInstructions: e.target.value })}
-                      rows={3}
-                    />
+                  {hardCopyDelivery && (
+                    <>
+                      <div className="flex justify-between text-sm" suppressHydrationWarning>
+                        <span className="text-gray-600">Hard Copy:</span>
+                        <span className="font-medium">50 SAR</span>
+                      </div>
+                      {hardCopyDeliveryType === "EXPRESS" && (
+                        <div className="flex justify-between text-sm" suppressHydrationWarning>
+                          <span className="text-gray-600">Express Delivery:</span>
+                          <span className="font-medium">30 SAR</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+            <Separator />
+                  <div className="flex justify-between items-baseline" suppressHydrationWarning>
+                    <span className="text-base font-semibold text-gray-900">Total</span>
+                    <span className="text-2xl font-bold text-gray-900">{finalPrice} SAR</span>
                   </div>
                 </div>
                 
-                <div className="mt-4 p-3 bg-blue-100 rounded-md text-sm text-blue-800">
-                  <p className="font-semibold">Hard Copy Delivery Fee: 50 DH</p>
-                  <p className="text-xs mt-1">This fee covers printing, stamping, and delivery of your certified translation.</p>
-                </div>
-              </div>
-            )}
+                <p className="text-xs text-gray-500 pt-2 border-t">
+                  Prices exclude VAT. Cut-offs: Same-Day 12:00 AST • Next-Day 18:00 AST • 1 page = 250 words.
+                </p>
+                
+                {/* Payment Methods */}
+                <div className="flex flex-col gap-2 pt-4 border-t" suppressHydrationWarning>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                  >
+                    MADA
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                  >
+                    APPLE PAY
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                  >
+                    STC PAY
+                  </Button>
+            </div>
+                
+                <Button
+                  size="lg"
+                  onClick={handleConfirmOrder}
+                  className="w-full bg-[#076e32] hover:bg-[#065a2a] text-white mt-4"
+                >
+                  Proceed to Secure Payment
+                </Button>
+                
+                <p className="text-xs text-gray-500 text-center pt-2">
+                  By proceeding, you agree to our <a href="#" className="underline">Terms & SLA</a>
+                </p>
           </CardContent>
         </Card>
-
-        {/* Price Summary */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Price Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between text-sm">
-              <span>Translation Price ({formData.numPages} pages x {calculatePrice("1", selectedDelivery, false)} DH per page):</span>
-              <span>{calculatePrice(formData.numPages, selectedDelivery, false)} DH</span>
-            </div>
-            {hardCopyDelivery && (
-              <div className="flex justify-between text-sm">
-                <span>Hard Copy Delivery Fee:</span>
-                <span>50 DH</span>
-              </div>
-            )}
-            <Separator />
-            <div className="flex justify-between font-bold text-lg">
-              <span>Total Price:</span>
-              <span>{finalPrice} DH</span>
-            </div>
-            <p className="text-xs text-gray-500">* Prices do not include 5% VAT.</p>
-            <p className="text-xs text-gray-500">* By proceeding to pay, you agree to our <a href="#" className="underline">Terms of Use</a> & <a href="#" className="underline">Privacy Policy</a>.</p>
-          </CardContent>
-        </Card>
-
-        {/* Proceed to Payment Button */}
-        <div className="text-right">
-          <Button size="lg" onClick={handleConfirmOrder}>
-            Proceed to Payment
-          </Button>
+          </div>
         </div>
       </div>
     </div>
