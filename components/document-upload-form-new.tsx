@@ -24,8 +24,18 @@ import {
   CheckCircle2,
   User,
   ArrowLeftRight,
+  MessageCircle,
+  Mail,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // PDF.js will be loaded dynamically when needed
 
@@ -39,6 +49,7 @@ interface UploadedFile {
 
 export function DocumentUploadFormNew() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -59,25 +70,65 @@ export function DocumentUploadFormNew() {
     documentType: "STANDARD", // STANDARD or SWORN
     turnaround: "STANDARD", // STANDARD, NEXT_DAY, SAME_DAY
     hardCopy: false,
-    hardCopyDelivery: "STANDARD", // STANDARD or EXPRESS
     specialInstructions: "",
   });
 
   // Calculated values
   const [totalPages, setTotalPages] = useState(0);
   const [totalPrice, setTotalPrice] = useState(0);
+  
+  // Coupon state
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountAmount: number;
+    discountType: string;
+  } | null>(null);
+  const [couponError, setCouponError] = useState("");
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
-  // Pricing configuration (matching HalaTranslate)
+  // Pricing settings from API
+  const [pricingSettings, setPricingSettings] = useState({
+    standardCertifiedPricePerPage: 49,
+    swornPricePerPage: 75,
+    standardMultiplier: 1.0,
+    nextDayMultiplier: 1.5,
+    sameDayMultiplier: 2.0,
+    hardCopyFee: 50,
+  });
+  const [pricingLoaded, setPricingLoaded] = useState(false);
+
+  // Fetch pricing settings on mount (with cache busting)
+  useEffect(() => {
+    const fetchPricing = async () => {
+      try {
+        const response = await fetch("/api/pricing?t=" + Date.now(), {
+          cache: 'no-store',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setPricingSettings(data);
+          setPricingLoaded(true);
+        } else {
+          setPricingLoaded(true); // Still set to true to prevent infinite loading
+        }
+      } catch (error) {
+        console.error("Error fetching pricing:", error);
+        setPricingLoaded(true); // Still set to true to prevent infinite loading
+      }
+    };
+    fetchPricing();
+  }, []);
+
+  // Pricing configuration (derived from API settings)
   const PRICING = {
-    basePrice: 49,          // SAR per page
-    swornFee: 40,           // SAR per page (additional)
-    hardCopyBase: 35,       // SAR fixed fee
-    shipStd: 25,            // SAR
-    shipExpress: 55,        // SAR
+    basePrice: pricingSettings.standardCertifiedPricePerPage,
+    swornPricePerPage: pricingSettings.swornPricePerPage,
+    hardCopyBase: pricingSettings.hardCopyFee,
     multipliers: { 
-      STANDARD: 1, 
-      NEXT_DAY: 1.5, 
-      SAME_DAY: 2.2 
+      STANDARD: pricingSettings.standardMultiplier, 
+      NEXT_DAY: pricingSettings.nextDayMultiplier, 
+      SAME_DAY: pricingSettings.sameDayMultiplier 
     }
   };
 
@@ -86,13 +137,10 @@ export function DocumentUploadFormNew() {
     let price = 0;
     
     if (totalPages > 0) {
-      // Base price per page
-      let unitPrice = PRICING.basePrice;
-      
-      // Add sworn fee if selected
-      if (formData.documentType === "SWORN") {
-        unitPrice += PRICING.swornFee;
-      }
+      // Base price per page based on service type
+      let unitPrice = formData.documentType === "SWORN" 
+        ? PRICING.swornPricePerPage 
+        : PRICING.basePrice;
       
       // Apply turnaround multiplier
       unitPrice *= PRICING.multipliers[formData.turnaround as keyof typeof PRICING.multipliers] || 1;
@@ -100,58 +148,113 @@ export function DocumentUploadFormNew() {
       // Total translation cost
       price = Math.round(totalPages * unitPrice);
       
-      // Add hard copy fees
+      // Add hard copy fee (single price, no shipping method)
       if (formData.hardCopy) {
         price += PRICING.hardCopyBase;
-        
-        // Add shipping fee
-        if (formData.hardCopyDelivery === "EXPRESS") {
-          price += PRICING.shipExpress;
-        } else {
-          price += PRICING.shipStd;
-        }
+      }
+      
+      // Apply coupon discount if available
+      if (appliedCoupon) {
+        price = Math.max(0, price - appliedCoupon.discountAmount);
       }
     }
     
-    setTotalPrice(price);
-  }, [totalPages, formData.turnaround, formData.documentType, formData.hardCopy, formData.hardCopyDelivery]);
+    setTotalPrice(Math.round(price));
+  }, [totalPages, formData.turnaround, formData.documentType, formData.hardCopy, appliedCoupon, pricingSettings]);
+
+  // Track if we've already shown the page limit warning to avoid spam
+  const [hasShownPageLimitWarning, setHasShownPageLimitWarning] = useState(false);
+  const [showPageLimitModal, setShowPageLimitModal] = useState(false);
+  const [exceededPageCount, setExceededPageCount] = useState(0);
 
   // Calculate total pages from uploaded files (use ACTUAL page count from files)
   useEffect(() => {
     const completedFiles = uploadedFiles.filter(f => f.status === "completed");
     if (completedFiles.length > 0) {
-      // Sum actual page counts from each file
-      const totalPagesCount = completedFiles.reduce((sum, file) => {
-        const filePages = file.pageCount || 0;
-        return sum + filePages;
-      }, 0);
-      setTotalPages(totalPagesCount);
+      // Only calculate total if all completed files have page counts
+      const allHavePageCounts = completedFiles.every(f => f.pageCount !== undefined && f.pageCount !== null);
+      
+      if (allHavePageCounts) {
+        // Sum actual page counts from each file
+        const totalPagesCount = completedFiles.reduce((sum, file) => {
+          const filePages = file.pageCount || 0;
+          return sum + filePages;
+        }, 0);
+        
+        // Show modal only once if limit is exceeded (don't auto-remove files)
+        if (totalPagesCount > 10 && !hasShownPageLimitWarning) {
+          setExceededPageCount(totalPagesCount);
+          setShowPageLimitModal(true);
+          setHasShownPageLimitWarning(true);
+        } else if (totalPagesCount <= 10) {
+          // Reset warning flag if we're back under the limit
+          setHasShownPageLimitWarning(false);
+          setShowPageLimitModal(false);
+        }
+        
+        // Always show the actual total (don't cap at 10, let user see the real number)
+        setTotalPages(totalPagesCount);
+      } else {
+        // Some files are still calculating page counts, use current known total
+        const knownTotal = completedFiles.reduce((sum, file) => {
+          return sum + (file.pageCount || 0);
+        }, 0);
+        setTotalPages(knownTotal);
+      }
     } else {
       setTotalPages(0);
+      setHasShownPageLimitWarning(false); // Reset when no files
     }
-  }, [uploadedFiles]);
+  }, [uploadedFiles, hasShownPageLimitWarning]);
 
-  // Get ACTUAL page count from PDF via server-side API (avoids webpack bundling issues)
+  // Get ACTUAL page count from PDF using pdf.js client-side (like the HTML solution)
   const getPDFPageCount = async (file: File): Promise<number> => {
     try {
-      // Send file to server for processing (server-side has no webpack issues)
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await fetch('/api/get-pdf-pages', {
-        method: 'POST',
-        body: formData,
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        if (result.pageCount) {
-          console.log(`PDF ${file.name}: Actual page count = ${result.pageCount} (from server)`);
-          return result.pageCount;
-        }
+      // Load pdf.js dynamically from CDN (like the HTML solution)
+      if (typeof window === 'undefined') {
+        throw new Error('Client-side only');
       }
       
-      throw new Error('Failed to get page count from server');
+      // Check if pdf.js is already loaded
+      let pdfjsLib: any;
+      
+      if ((window as any).pdfjsLib) {
+        pdfjsLib = (window as any).pdfjsLib;
+      } else {
+        // Load pdf.js from CDN (same as HTML solution)
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js';
+          script.async = true;
+          script.onload = () => {
+            pdfjsLib = (window as any).pdfjsLib;
+            if (!pdfjsLib) {
+              reject(new Error('Failed to load pdf.js library'));
+              return;
+            }
+            // Configure worker (same as HTML solution)
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+            resolve();
+          };
+          script.onerror = () => reject(new Error('Failed to load pdf.js script'));
+          document.head.appendChild(script);
+        });
+      }
+      
+      // Read file as ArrayBuffer
+      const arrayBuffer = await file.arrayBuffer();
+      
+      // Load PDF document using pdf.js (client-side, same as HTML solution)
+      const loadingTask = pdfjsLib.getDocument({
+        data: arrayBuffer,
+        verbosity: 0,
+      });
+      
+      const pdf = await loadingTask.promise;
+      const pageCount = pdf.numPages;
+      
+      console.log(`PDF ${file.name}: Actual page count = ${pageCount} pages (client-side pdf.js)`);
+      return pageCount;
     } catch (error) {
       console.error("Error getting PDF page count:", error);
       // Fallback: estimate from file size (very rough)
@@ -161,40 +264,75 @@ export function DocumentUploadFormNew() {
     }
   };
   
-  // Extract page count from Word documents using server API
+  // Extract page count from Word documents using client-side mammoth.js (like HTML solution)
   const extractWordDocumentPageCount = async (file: File): Promise<number> => {
     try {
-      // Send file to server for processing
-      const formData = new FormData();
-      formData.append('file', file);
+      const fileName = file.name.toLowerCase();
       
-      const response = await fetch('/api/check-file', {
-        method: 'POST',
-        body: formData,
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        // Server should return pageCount
-        if (result.pageCount) {
-          return result.pageCount;
+      if (fileName.endsWith('.docx')) {
+        // Use mammoth.js for DOCX files (like HTML solution)
+        if (typeof window === 'undefined') {
+          throw new Error('Client-side only');
         }
+        
+        // Load mammoth.js dynamically from CDN
+        let mammoth: any;
+        
+        if ((window as any).mammoth) {
+          mammoth = (window as any).mammoth;
+        } else {
+          // Load mammoth.js from CDN (same as HTML solution)
+          await new Promise<void>((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/mammoth/mammoth.browser.min.js';
+            script.async = true;
+            script.onload = () => {
+              mammoth = (window as any).mammoth;
+              if (!mammoth) {
+                reject(new Error('Failed to load mammoth.js library'));
+                return;
+              }
+              resolve();
+            };
+            script.onerror = () => reject(new Error('Failed to load mammoth.js script'));
+            document.head.appendChild(script);
+          });
+        }
+        
+        // Extract text from DOCX using mammoth (like HTML solution)
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        const text = result.value;
+        
+        // Count words
+        const words = text.trim().split(/\s+/).filter(word => word.length > 0).length;
+        
+        // Calculate pages: 250 words per page (industry standard, same as HTML solution)
+        const WORDS_PER_PAGE = 250;
+        const pageCount = Math.max(1, Math.ceil(words / WORDS_PER_PAGE));
+        
+        console.log(`DOCX ${file.name}: ${words} words = ${pageCount} pages (client-side mammoth.js)`);
+        return pageCount;
+      } else if (fileName.endsWith('.doc')) {
+        // For .doc files (old format), we can't easily parse them client-side
+        // Use a more conservative estimation based on file size
+        // Old .doc files are typically much smaller per page (1000-2000 bytes for 1 page)
+        // Use a larger divisor to avoid overcounting
+        const estimatedPages = Math.max(1, Math.ceil(file.size / 15000));
+        console.log(`DOC ${file.name}: Estimated ${estimatedPages} pages (size: ${file.size} bytes)`);
+        return estimatedPages;
       }
       
-      // Fallback: Estimation based on file size
-      // For .docx: Average ~2500 bytes per page
-      // For .doc: Average ~3500 bytes per page
-      const fileName = file.name.toLowerCase();
-      const bytesPerPage = fileName.endsWith('.doc') && !fileName.endsWith('.docx') ? 3500 : 2500;
-      const estimatedPages = Math.max(1, Math.ceil(file.size / bytesPerPage));
-      
-      return estimatedPages;
+      throw new Error('Unsupported file type');
     } catch (error) {
       console.error('Error processing Word document:', error);
-      // Fallback estimation
+      // Fallback: Very conservative estimation
       const fileName = file.name.toLowerCase();
-      const bytesPerPage = fileName.endsWith('.doc') && !fileName.endsWith('.docx') ? 3500 : 2500;
-      return Math.max(1, Math.ceil(file.size / bytesPerPage));
+      // Use larger bytes per page to avoid overcounting
+      const bytesPerPage = fileName.endsWith('.doc') && !fileName.endsWith('.docx') ? 15000 : 10000;
+      const estimatedPages = Math.max(1, Math.ceil(file.size / bytesPerPage));
+      console.warn(`Using fallback estimation: ${estimatedPages} pages for ${file.name}`);
+      return estimatedPages;
     }
   };
 
@@ -256,8 +394,8 @@ export function DocumentUploadFormNew() {
               );
             } catch (error) {
               console.error(`Error processing Word document ${file.name}:`, error);
-              // Fallback estimation
-              const bytesPerPage = fileName.endsWith('.docx') ? 2500 : 3500;
+              // Fallback estimation - use better bytes per page for DOCX (has XML overhead)
+              const bytesPerPage = fileName.endsWith('.docx') ? 10000 : 3500;
               const estimatedPages = Math.max(1, Math.ceil(file.size / bytesPerPage));
               setUploadedFiles(prev =>
                 prev.map(f =>
@@ -310,6 +448,10 @@ export function DocumentUploadFormNew() {
     if (e.target.files) {
       const files = Array.from(e.target.files);
       handleFiles(files);
+      // Reset the input value so the same file can be selected again
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -338,12 +480,8 @@ export function DocumentUploadFormNew() {
     
     if (validFiles.length === 0) return;
     
-    // Check total pages limit
-    const currentTotalPages = totalPages;
-    if (currentTotalPages + validFiles.length * 10 > 10) {
-      alert("Maximum 10 pages allowed. Please contact us for more pages.");
-      return;
-    }
+    // Don't block uploads here - we'll validate after page counts are calculated
+    // This allows users to add multiple files, and we'll warn them if total exceeds limit
     
     let tempRequestId: string | null = null;
     try {
@@ -406,6 +544,72 @@ export function DocumentUploadFormNew() {
     setUploadedFiles((prev) => prev.filter((f) => f.id !== fileId));
   };
 
+  // Validate and apply coupon
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) {
+      setCouponError("Please enter a coupon code");
+      return;
+    }
+
+    if (totalPages === 0) {
+      setCouponError("Please upload files first");
+      return;
+    }
+
+    setIsValidatingCoupon(true);
+    setCouponError("");
+
+    try {
+      // Calculate base price before discount for validation
+      let basePrice = 0;
+      if (totalPages > 0) {
+        let unitPrice = PRICING.basePrice;
+        if (formData.documentType === "SWORN") unitPrice += PRICING.swornFee;
+        unitPrice *= PRICING.multipliers[formData.turnaround as keyof typeof PRICING.multipliers] || 1;
+        basePrice = Math.round(totalPages * unitPrice);
+        if (formData.hardCopy) {
+          basePrice += PRICING.hardCopyBase;
+        }
+      }
+
+      const response = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: couponCode.trim(),
+          totalAmount: basePrice,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.valid) {
+        setAppliedCoupon({
+          code: data.coupon.code,
+          discountAmount: data.discountAmount,
+          discountType: data.coupon.discountType,
+        });
+        setCouponError("");
+        setCouponCode(""); // Clear input
+      } else {
+        setCouponError(data.error || "Invalid coupon code");
+        setAppliedCoupon(null);
+      }
+    } catch (error) {
+      console.error("Error validating coupon:", error);
+      setCouponError("Failed to validate coupon. Please try again.");
+      setAppliedCoupon(null);
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponError("");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -429,9 +633,11 @@ export function DocumentUploadFormNew() {
       return;
     }
     
-    if (formData.hardCopy && !formData.deliveryAddress) {
-      alert("Please provide delivery address for hard copy");
-      return;
+    if (formData.hardCopy) {
+      if (!formData.deliveryAddress || !formData.deliveryCity || !formData.deliveryPostalCode || !formData.deliveryCountry) {
+        alert("Please fill in all required delivery address fields (Street Address, City, Postal Code, and Country)");
+        return;
+      }
     }
     
     setIsSubmitting(true);
@@ -474,12 +680,13 @@ export function DocumentUploadFormNew() {
         fileSize: uploadedFiles[0]?.file.size.toString() || "",
         fileType: uploadedFiles[0]?.file.type || "",
         hardCopy: formData.hardCopy,
-        hardCopyDelivery: formData.hardCopyDelivery,
         deliveryAddress: formData.deliveryAddress,
         deliveryCity: formData.deliveryCity,
         deliveryPostalCode: formData.deliveryPostalCode,
         deliveryCountry: formData.deliveryCountry,
         deliveryInstructions: formData.deliveryInstructions,
+        couponCode: appliedCoupon?.code || null,
+        discountAmount: appliedCoupon?.discountAmount || null,
       };
       
       const encodedData = encodeURIComponent(JSON.stringify(reviewData));
@@ -515,10 +722,11 @@ export function DocumentUploadFormNew() {
               onDragLeave={handleDrag}
               onDragOver={handleDrag}
               onDrop={handleDrop}
-              onClick={() => document.getElementById("file-upload")?.click()}
+              onClick={() => fileInputRef.current?.click()}
               suppressHydrationWarning
             >
               <input
+                ref={fileInputRef}
                 type="file"
                 multiple
                 onChange={handleFileInput}
@@ -719,32 +927,86 @@ export function DocumentUploadFormNew() {
               </label>
 
               {formData.hardCopy && (
-                <div className="mt-5 pt-5 border-t border-slate-200" suppressHydrationWarning>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Full Delivery Address</label>
-                  <Textarea
-                    id="deliveryAddress"
-                    rows={2}
-                    className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-[#076E32] mb-4"
-                    placeholder="Building No, Street Name, District, City, ZIP Code..."
-                    value={formData.deliveryAddress}
-                    onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
-                    required={formData.hardCopy}
-                  />
-                  <div className="mt-4">
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Shipping Method</label>
-                    <Select
-                      value={formData.hardCopyDelivery}
-                      onValueChange={(value) => setFormData({ ...formData, hardCopyDelivery: value })}
-                    >
-                      <SelectTrigger className="w-full md:w-1/2 border border-slate-300 rounded-xl px-3 py-2 bg-white text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="STANDARD">Standard Shipping</SelectItem>
-                        <SelectItem value="EXPRESS">Express Courier</SelectItem>
-                      </SelectContent>
-                    </Select>
+                <div className="mt-5 pt-5 border-t border-slate-200 space-y-4" suppressHydrationWarning>
+                  {/* Delivery Address */}
+                  <div>
+                    <label htmlFor="deliveryAddress" className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">
+                      Street Address / Building *
+                    </label>
+                    <Input
+                      id="deliveryAddress"
+                      type="text"
+                      className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#076E32]"
+                      placeholder="Building No, Street Name, District..."
+                      value={formData.deliveryAddress}
+                      onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                      required={formData.hardCopy}
+                    />
                   </div>
+
+                  {/* City and Postal Code */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="deliveryCity" className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">
+                        City *
+                      </label>
+                      <Input
+                        id="deliveryCity"
+                        type="text"
+                        className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#076E32]"
+                        placeholder="City"
+                        value={formData.deliveryCity}
+                        onChange={(e) => setFormData({ ...formData, deliveryCity: e.target.value })}
+                        required={formData.hardCopy}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="deliveryPostalCode" className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">
+                        Postal Code *
+                      </label>
+                      <Input
+                        id="deliveryPostalCode"
+                        type="text"
+                        className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#076E32]"
+                        placeholder="Postal Code"
+                        value={formData.deliveryPostalCode}
+                        onChange={(e) => setFormData({ ...formData, deliveryPostalCode: e.target.value })}
+                        required={formData.hardCopy}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Country */}
+                  <div>
+                    <label htmlFor="deliveryCountry" className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">
+                      Country *
+                    </label>
+                    <Input
+                      id="deliveryCountry"
+                      type="text"
+                      className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#076E32]"
+                      placeholder="Country"
+                      value={formData.deliveryCountry}
+                      onChange={(e) => setFormData({ ...formData, deliveryCountry: e.target.value })}
+                      required={formData.hardCopy}
+                    />
+                  </div>
+
+                  {/* Delivery Instructions */}
+                  <div>
+                    <label htmlFor="deliveryInstructions" className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">
+                      Delivery Instructions (Optional)
+                    </label>
+                    <Textarea
+                      id="deliveryInstructions"
+                      rows={2}
+                      className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-[#076E32]"
+                      placeholder="Additional delivery instructions, landmarks, or special notes..."
+                      value={formData.deliveryInstructions}
+                      onChange={(e) => setFormData({ ...formData, deliveryInstructions: e.target.value })}
+                    />
+                  </div>
+
                 </div>
               )}
             </div>
@@ -823,44 +1085,147 @@ export function DocumentUploadFormNew() {
                 <div className="p-6 md:p-8" suppressHydrationWarning>
                   <h3 className="text-lg font-bold mb-6 border-b border-gray-700 pb-4">Order Summary</h3>
                   
-                  <div className="space-y-4 text-sm text-gray-300 min-h-[80px]" suppressHydrationWarning>
+                  <div className="space-y-3 text-sm text-gray-300 min-h-[80px]" suppressHydrationWarning>
                     {totalPages > 0 ? (
                       <>
-                        <div className="flex justify-between items-center pb-2 border-b border-gray-700">
-                          <span className="text-gray-300">Volume</span>
-                          <span className="font-bold text-white">{totalPages} Page{totalPages > 1 ? 's' : ''}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1">
-                          <span>Rate ({formData.documentType === 'SWORN' ? 'Sworn (+40 SAR)' : 'Standard'})</span>
-                          <span>x {formData.turnaround === 'SAME_DAY' ? '2.2' : formData.turnaround === 'NEXT_DAY' ? '1.5' : '1'} speed</span>
-                        </div>
-                        <div className="flex justify-between items-center font-mono text-emerald-400">
-                          <span>Translation Cost</span>
-                          <span>SAR {(() => {
-                            if (totalPages === 0) return 0;
-                            let unitPrice = PRICING.basePrice;
-                            if (formData.documentType === 'SWORN') unitPrice += PRICING.swornFee;
-                            unitPrice *= PRICING.multipliers[formData.turnaround as keyof typeof PRICING.multipliers] || 1;
-                            return Math.round(totalPages * unitPrice);
-                          })()}</span>
-                        </div>
-                        {formData.hardCopy && (
-                          <div className="mt-2 pt-2 border-t border-gray-700 border-dashed space-y-1">
-                            <div className="flex justify-between text-emerald-300">
-                              <span>Hard Copy Prep</span>
-                              <span>+{PRICING.hardCopyBase}</span>
+                        {/* Invoice-style breakdown */}
+                        <div className="space-y-2" suppressHydrationWarning>
+                          {/* Pages count */}
+                          <div className="flex justify-between items-center pb-2 border-b border-gray-700">
+                            <span className="text-gray-300">Number of Pages</span>
+                            <span className="font-semibold text-white">{totalPages} Page{totalPages > 1 ? 's' : ''}</span>
+                          </div>
+                          
+                          {/* Price per page breakdown */}
+                          <div className="space-y-1.5 pt-2" suppressHydrationWarning>
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-400">Base Price (per page)</span>
+                              <span className="text-white">SAR {formData.documentType === 'SWORN' ? PRICING.swornPricePerPage : PRICING.basePrice}</span>
                             </div>
-                            <div className="flex justify-between text-emerald-300">
-                              <span>Delivery ({formData.hardCopyDelivery === 'EXPRESS' ? 'Express' : 'Standard'})</span>
-                              <span>+{formData.hardCopyDelivery === 'EXPRESS' ? PRICING.shipExpress : PRICING.shipStd}</span>
+                            
+                            <div className="flex justify-between items-center pt-1 border-t border-gray-700/50">
+                              <span className="text-gray-300 font-medium">Price per Page</span>
+                              <span className="text-white font-semibold">
+                                SAR {formData.documentType === 'SWORN' ? PRICING.swornPricePerPage : PRICING.basePrice}
+                              </span>
+                            </div>
+                            
+                            {/* Subtotal before multiplier */}
+                            <div className="flex justify-between items-center pt-1 pb-2 border-b border-gray-700">
+                              <span className="text-gray-300">Subtotal ({totalPages} × {formData.documentType === 'SWORN' ? PRICING.swornPricePerPage : PRICING.basePrice})</span>
+                              <span className="text-white font-semibold">
+                                SAR {totalPages * (formData.documentType === 'SWORN' ? PRICING.swornPricePerPage : PRICING.basePrice)}
+                              </span>
+                            </div>
+                            
+                            {/* Turnaround multiplier */}
+                            {formData.turnaround !== 'STANDARD' && (
+                              <div className="flex justify-between items-center text-emerald-300">
+                                <span className="text-sm">
+                                  {formData.turnaround === 'SAME_DAY' ? 'Same Day' : 'Next Day'} Speed Multiplier
+                                </span>
+                                <span className="text-sm">
+                                  × {PRICING.multipliers[formData.turnaround as keyof typeof PRICING.multipliers] || 1}
+                                </span>
+                              </div>
+                            )}
+                            
+                            {/* Translation total */}
+                            <div className="flex justify-between items-center pt-2 border-t border-gray-700 font-mono">
+                              <span className="text-emerald-400 font-semibold">Translation Cost</span>
+                              <span className="text-emerald-400 font-bold text-base">
+                                SAR {(() => {
+                                  if (totalPages === 0) return 0;
+                                  let unitPrice = PRICING.basePrice;
+                                  if (formData.documentType === 'SWORN') unitPrice += PRICING.swornFee;
+                                  unitPrice *= PRICING.multipliers[formData.turnaround as keyof typeof PRICING.multipliers] || 1;
+                                  return Math.round(totalPages * unitPrice);
+                                })()}
+                              </span>
                             </div>
                           </div>
-                        )}
+                          
+                          {/* Hard copy fee */}
+                          {formData.hardCopy && (
+                            <div className="mt-3 pt-3 border-t border-gray-700" suppressHydrationWarning>
+                              <div className="flex justify-between items-center text-emerald-300">
+                                <span className="text-sm">Hard Copy Preparation</span>
+                                <span className="text-sm">+ SAR {PRICING.hardCopyBase}</span>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Coupon Discount */}
+                          {appliedCoupon && (
+                            <div className="mt-3 pt-3 border-t border-gray-700 space-y-1" suppressHydrationWarning>
+                              <div className="flex justify-between items-center text-green-400">
+                                <span className="text-sm font-medium">Coupon ({appliedCoupon.code})</span>
+                                <span className="text-sm font-bold">- SAR {appliedCoupon.discountAmount.toFixed(2)}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </>
                     ) : (
                       <p className="text-gray-500 italic text-center py-4">Upload a file to see the instant quote...</p>
                     )}
                   </div>
+
+                  {/* Coupon Code Input */}
+                  {totalPages > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-700" suppressHydrationWarning>
+                      {appliedCoupon ? (
+                        <div className="flex items-center justify-between p-3 bg-green-900/30 rounded-lg border border-green-500/30" suppressHydrationWarning>
+                          <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <span className="text-sm text-green-300 font-medium">Coupon Applied: {appliedCoupon.code}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleRemoveCoupon}
+                            className="text-green-300 hover:text-white text-sm underline"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2" suppressHydrationWarning>
+                          <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Coupon Code</label>
+                          <div className="flex gap-2">
+                            <Input
+                              type="text"
+                              value={couponCode}
+                              onChange={(e) => {
+                                setCouponCode(e.target.value.toUpperCase());
+                                setCouponError("");
+                              }}
+                              placeholder="Enter coupon code"
+                              className="flex-1 border-gray-600 bg-gray-800 text-white placeholder:text-gray-500"
+                              onKeyPress={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleApplyCoupon();
+                                }
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              onClick={handleApplyCoupon}
+                              disabled={isValidatingCoupon || !couponCode.trim()}
+                              className="bg-[#076E32] hover:bg-[#065a2a] disabled:bg-gray-700"
+                            >
+                              {isValidatingCoupon ? "..." : "Apply"}
+                            </Button>
+                          </div>
+                          {couponError && (
+                            <p className="text-xs text-red-400">{couponError}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="mt-8 pt-6 border-t border-gray-600 flex justify-between items-end" suppressHydrationWarning>
                     <span className="text-sm text-gray-400 font-medium">Total (SAR)</span>
@@ -908,6 +1273,58 @@ export function DocumentUploadFormNew() {
           </div>
         </form>
       </div>
+
+      {/* Page Limit Exceeded Modal */}
+      <Dialog open={showPageLimitModal} onOpenChange={setShowPageLimitModal}>
+        <DialogContent className="sm:max-w-md" suppressHydrationWarning>
+          <DialogHeader suppressHydrationWarning>
+            <DialogTitle className="text-xl font-bold text-slate-800" suppressHydrationWarning>
+              Maximum Page Limit Exceeded
+            </DialogTitle>
+            <DialogDescription className="text-slate-600 mt-2" suppressHydrationWarning>
+              Your uploaded documents contain <strong>{exceededPageCount} pages</strong>, which exceeds the online limit of <strong>10 pages</strong>.
+              <br /><br />
+              Please contact us for documents with more than 10 pages. We'll provide you with a personalized quote and delivery timeline.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex flex-col gap-3 mt-4" suppressHydrationWarning>
+            <Button
+              onClick={() => {
+                window.open('https://wa.me/966XXXXXXXXX', '_blank'); // Replace with actual WhatsApp number
+              }}
+              className="w-full bg-[#076E32] hover:bg-[#065a2a] text-white flex items-center justify-center gap-2"
+            >
+              <MessageCircle className="w-5 h-5" />
+              Contact us on WhatsApp
+            </Button>
+            
+            <Button
+              onClick={() => {
+                window.location.href = 'mailto:info@halatranslate.com'; // Replace with actual email
+              }}
+              variant="outline"
+              className="w-full border-slate-300 hover:bg-slate-50 flex items-center justify-center gap-2"
+            >
+              <Mail className="w-5 h-5" />
+              Send us an Email
+            </Button>
+          </div>
+
+          <DialogFooter className="mt-4" suppressHydrationWarning>
+            <Button
+              onClick={() => {
+                setShowPageLimitModal(false);
+                // Allow user to continue with warning
+              }}
+              variant="ghost"
+              className="text-slate-600 hover:text-slate-800"
+            >
+              Continue Anyway
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

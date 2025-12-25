@@ -9,12 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/hooks/use-auth"
-import { FileText, Clock, CheckCircle, AlertCircle, Search, Eye, Edit, LogOut, Trash, Download, ExternalLink } from "lucide-react"
+import { FileText, Clock, CheckCircle, AlertCircle, Search, Eye, Edit, Trash, Download, ExternalLink, TrendingUp, Users, DollarSign } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { DeleteConfirmationModal } from "@/components/ui/delete-confirmation-modal"
 import { DeleteSuccessModal } from "@/components/ui/delete-success-modal"
-// Removed: import { useToast } from "@/components/ui/use-toast"
-import Image from "next/image"
+import { AdminLayoutWrapper } from "@/components/admin/admin-layout-wrapper"
 
 enum RequestStatus {
   PENDING = "PENDING",
@@ -156,11 +155,6 @@ export default function AdminDashboard() {
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
-  const handleLogout = async () => {
-    await logout()
-    router.push("/") // Redirect to home page
-  }
-
   const handleDeleteClick = (requestId: string) => {
     setRequestIdToDelete(requestId)
     setShowDeleteModal(true)
@@ -232,67 +226,59 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <Image src="/images/logo.svg" alt="Translated Logo" width={200} height={100} />
-              {/* <h1 className="text-xl font-bold text-gray-900">Dashboard</h1> */}
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">Welcome in the Dashboard, {user?.name}</span>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
-              </Button>
-            </div>
-          </div>
+    <AdminLayoutWrapper>
+      <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-6 px-2 sm:px-4">
+        {/* Page Header */}
+        <div className="flex flex-col gap-1 sm:gap-2">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-xs sm:text-sm md:text-base text-muted-foreground">
+            Overview of translation requests and system statistics
+          </p>
         </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards */}
+        {/* Stats Cards - Modern Vercel Style */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card>
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+            <Card className="border-border/50 bg-card hover:shadow-md transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Requests</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Requests</CardTitle>
                 <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stats.totalRequests}</div>
+                <div className="text-3xl font-bold">{stats.totalRequests}</div>
+                <p className="text-xs text-muted-foreground mt-1">All time requests</p>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-border/50 bg-card hover:shadow-md transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pending</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium text-muted-foreground">Pending</CardTitle>
+                <Clock className="h-4 w-4 text-amber-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stats.pendingRequests}</div>
+                <div className="text-3xl font-bold">{stats.pendingRequests}</div>
+                <p className="text-xs text-muted-foreground mt-1">Awaiting review</p>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-border/50 bg-card hover:shadow-md transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-                <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium text-muted-foreground">In Progress</CardTitle>
+                <AlertCircle className="h-4 w-4 text-blue-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stats.inProgressRequests}</div>
+                <div className="text-3xl font-bold">{stats.inProgressRequests}</div>
+                <p className="text-xs text-muted-foreground mt-1">Currently translating</p>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-border/50 bg-card hover:shadow-md transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Completed</CardTitle>
-                <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium text-muted-foreground">Completed</CardTitle>
+                <CheckCircle className="h-4 w-4 text-green-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stats.completedRequests}</div>
+                <div className="text-3xl font-bold">{stats.completedRequests}</div>
+                <p className="text-xs text-muted-foreground mt-1">Successfully delivered</p>
               </CardContent>
             </Card>
           </div>
@@ -306,36 +292,36 @@ export default function AdminDashboard() {
           </TabsList>
 
           <TabsContent value="requests" className="space-y-6">
-            <Card>
-              <CardHeader>
+            <Card className="border-border/50">
+              <CardHeader className="border-b border-border/50">
                 <CardTitle>Translation Requests</CardTitle>
                 <CardDescription>Manage and track all translation requests</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-3 sm:p-4 md:p-6">
                 {/* Filters */}
-                <div className="flex flex-col gap-4 mb-6">
-                  <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="flex-1">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                      <Input
-                        placeholder="Search by name, email, or filename..."
-                        value={searchTerm}
+                <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 z-10" />
+                        <Input
+                          placeholder="Search by name, email, or filename..."
+                          value={searchTerm}
                           onChange={(e) => {
                             setSearchTerm(e.target.value)
                             setCurrentPage(1)
                           }}
-                        className="pl-10"
-                      />
+                          className="pl-10 w-full text-sm"
+                        />
+                      </div>
                     </div>
-                  </div>
                     <Select value={statusFilter} onValueChange={(value) => {
                       setStatusFilter(value)
                       setCurrentPage(1)
                     }}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Filter by status" />
-                    </SelectTrigger>
+                      <SelectTrigger className="w-full sm:w-[180px]">
+                        <SelectValue placeholder="Filter by status" />
+                      </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Status</SelectItem>
                       <SelectItem value="PENDING">Pending</SelectItem>
@@ -347,12 +333,12 @@ export default function AdminDashboard() {
                   </Select>
                   </div>
                   
-                  <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
                     <Select value={sortBy} onValueChange={(value) => {
                       setSortBy(value)
                       setCurrentPage(1)
                     }}>
-                      <SelectTrigger className="w-[180px]">
+                      <SelectTrigger className="w-full">
                         <SelectValue placeholder="Sort by" />
                       </SelectTrigger>
                       <SelectContent>
@@ -365,7 +351,7 @@ export default function AdminDashboard() {
                       setSortOrder(value)
                       setCurrentPage(1)
                     }}>
-                      <SelectTrigger className="w-[180px]">
+                      <SelectTrigger className="w-full">
                         <SelectValue placeholder="Order" />
                       </SelectTrigger>
                       <SelectContent>
@@ -390,7 +376,7 @@ export default function AdminDashboard() {
                         setDateFilter(e.target.value)
                         setCurrentPage(1)
                       }}
-                      className="w-[180px]"
+                      className="w-full"
                       placeholder="Filter by date"
                     />
                     
@@ -398,7 +384,7 @@ export default function AdminDashboard() {
                       setItemsPerPage(value)
                       setCurrentPage(1)
                     }}>
-                      <SelectTrigger className="w-[180px]">
+                      <SelectTrigger className="w-full">
                         <SelectValue placeholder="Items per page" />
                       </SelectTrigger>
                       <SelectContent>
@@ -413,47 +399,48 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* Requests Table */}
-                <div className="rounded-md border">
-                  <Table>
+                <div className="rounded-lg border border-border/50 overflow-hidden -mx-3 sm:mx-0">
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[800px]">
                     <TableHeader>
-                      <TableRow>
-                        <TableHead>Customer</TableHead>
-                        <TableHead>Languages</TableHead>
-                        <TableHead>Document</TableHead>
-                        <TableHead>Pages</TableHead>
-                        <TableHead>File</TableHead>
-                        <TableHead>Price</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Urgency</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Actions</TableHead>
+                      <TableRow className="bg-muted/50 hover:bg-muted/50">
+                        <TableHead className="font-semibold whitespace-nowrap min-w-[120px] sm:min-w-[150px]">Customer</TableHead>
+                        <TableHead className="font-semibold whitespace-nowrap hidden lg:table-cell min-w-[120px]">Languages</TableHead>
+                        <TableHead className="font-semibold whitespace-nowrap min-w-[120px] sm:min-w-[150px]">Document</TableHead>
+                        <TableHead className="font-semibold whitespace-nowrap hidden md:table-cell min-w-[60px]">Pages</TableHead>
+                        <TableHead className="font-semibold whitespace-nowrap hidden lg:table-cell min-w-[100px]">File</TableHead>
+                        <TableHead className="font-semibold whitespace-nowrap hidden md:table-cell min-w-[80px]">Price</TableHead>
+                        <TableHead className="font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">Status</TableHead>
+                        <TableHead className="font-semibold whitespace-nowrap hidden xl:table-cell min-w-[80px]">Urgency</TableHead>
+                        <TableHead className="font-semibold whitespace-nowrap hidden lg:table-cell min-w-[100px]">Date</TableHead>
+                        <TableHead className="font-semibold whitespace-nowrap min-w-[150px] sm:min-w-[200px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {requests.map((request) => (
                         <TableRow key={request.id}>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{request.customerName}</div>
-                              <div className="text-sm text-gray-500">{request.customerEmail}</div>
-                              <div className="text-sm text-gray-500">{request.customerPhone}</div>
+                          <TableCell className="min-w-[120px] sm:min-w-[150px]">
+                            <div className="max-w-[150px] sm:max-w-none">
+                              <div className="font-medium truncate">{request.customerName}</div>
+                              <div className="text-xs sm:text-sm text-gray-500 truncate">{request.customerEmail}</div>
+                              <div className="text-xs sm:text-sm text-gray-500 truncate">{request.customerPhone}</div>
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden lg:table-cell">
                             <div className="text-sm">
                               {request.sourceLanguage} → {request.targetLanguage}
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium text-sm">{request.originalFileName}</div>
-                              <div className="text-xs text-gray-500">{request.documentType}</div>
+                          <TableCell className="min-w-[120px] sm:min-w-[150px]">
+                            <div className="max-w-[150px] sm:max-w-none">
+                              <div className="font-medium text-xs sm:text-sm truncate">{request.originalFileName}</div>
+                              <div className="text-xs text-gray-500 truncate">{request.documentType}</div>
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden md:table-cell">
                             <div className="text-sm">{request.numberOfPages}</div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden lg:table-cell">
                             <div className="flex items-center space-x-2">
                               <Button
                                 variant="outline"
@@ -558,22 +545,22 @@ export default function AdminDashboard() {
                               {request.fileSize ? `${(request.fileSize / 1024 / 1024).toFixed(2)} MB` : 'N/A'}
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden md:table-cell">
                             <div className="text-sm font-medium">{request.finalPrice || request.estimatedPrice || "N/A"} DH</div>
                           </TableCell>
                           <TableCell>{getStatusBadge(request.status)}</TableCell>
-                          <TableCell>{getUrgencyBadge(request.urgency)}</TableCell>
-                          <TableCell>
+                          <TableCell className="hidden xl:table-cell">{getUrgencyBadge(request.urgency)}</TableCell>
+                          <TableCell className="hidden lg:table-cell">
                             <div className="text-sm">{new Date(request.createdAt).toLocaleDateString()}</div>
                             <div className="text-xs text-gray-500">{new Date(request.createdAt).toLocaleTimeString()}</div>
                           </TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-2">
+                          <TableCell className="min-w-[150px] sm:min-w-[200px]">
+                            <div className="flex items-center flex-wrap gap-1 sm:gap-2">
                               <Select
                                 value={request.status}
                                 onValueChange={(newStatus) => handleStatusChange(request.id, newStatus as RequestStatus)}
                               >
-                                <SelectTrigger className="w-[140px]">
+                                <SelectTrigger className="w-full sm:w-[120px] text-xs">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -587,23 +574,26 @@ export default function AdminDashboard() {
                               <Button
                                 variant="outline"
                                 size="sm"
+                                className="h-8 w-8 p-0"
                                 onClick={() => router.push(`/admin/requests/${request.id}`)}
                               >
-                                <Eye className="w-4 h-4" />
+                                <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
                               </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
+                                className="h-8 w-8 p-0"
                                 onClick={() => router.push(`/admin/requests/${request.id}/edit`)}
                               >
-                                <Edit className="w-4 h-4" />
+                                <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
                               </Button>
                               <Button
                                 variant="destructive"
                                 size="sm"
+                                className="h-8 w-8 p-0"
                                 onClick={() => handleDeleteClick(request.id)}
                               >
-                                <Trash className="w-4 h-4" />
+                                <Trash className="w-3 h-3 sm:w-4 sm:h-4" />
                               </Button>
                             </div>
                           </TableCell>
@@ -611,15 +601,16 @@ export default function AdminDashboard() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
                 </div>
                 
                 {/* Pagination */}
                 {pagination.pages > 1 && itemsPerPage !== "all" && (
-                  <div className="flex items-center justify-between mt-6">
-                    <div className="text-sm text-gray-600">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 mt-4 sm:mt-6">
+                    <div className="text-xs sm:text-sm text-gray-600 text-center sm:text-left w-full sm:w-auto">
                       Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} requests
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap justify-center">
                       <Button
                         variant="outline"
                         size="sm"
@@ -629,7 +620,7 @@ export default function AdminDashboard() {
                         Previous
                       </Button>
                       
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 flex-wrap justify-center">
                         {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
                           let pageNum: number
                           if (pagination.pages <= 5) {
@@ -708,7 +699,8 @@ export default function AdminDashboard() {
             </Card>
           </TabsContent>
         </Tabs>
-      </div>
+        
+        {/* Modals */}
       <DeleteConfirmationModal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
@@ -720,5 +712,6 @@ export default function AdminDashboard() {
         onClose={() => setShowDeleteSuccessModal(false)}
       />
     </div>
+    </AdminLayoutWrapper>
   )
 }

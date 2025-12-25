@@ -55,6 +55,17 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // Don't show sidebar on login page
+  if (pathname === "/admin/login") {
+    return (
+      <>
+        {children}
+        <Toaster />
+      </>
+    );
+  }
+
+  // Show sidebar layout for all other admin pages
   return (
     <>
       {children}

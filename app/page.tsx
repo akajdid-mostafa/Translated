@@ -3,6 +3,7 @@ import { HeroSection } from "@/components/hero-section"
 import { DocumentUploadFormWrapper } from "@/components/document-upload-form-wrapper"
 import { FAQSection } from "@/components/faq-section"
 import { ServicesSection } from "@/components/services-section"
+import { ServicesSection2 } from "@/components/services-section2"
 import { Footer } from "@/components/footer"
 
 export default function HomePage() {
@@ -11,9 +12,10 @@ export default function HomePage() {
       <Header />
       <HeroSection />
       <DocumentUploadFormWrapper />
-      <FAQSection />
       <ServicesSection />
-      {/* <Footer /> */}
+      <FAQSection />
+      <ServicesSection2 />
+      <Footer />
     </div>
   )
 }

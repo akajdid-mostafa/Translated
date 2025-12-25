@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 export function HeroSection() {
   return (
     <section className="relative py-16 md:py-24 overflow-hidden bg-gradient-to-r from-[#076e32] via-[#0a8a42] to-[#10b954]">
+      <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 via-[#212A37] to-[#044d22] opacity-95"></div>
+      <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(#ffffff 1px, transparent 1px)", backgroundSize: "30px 30px" }}></div>
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8" suppressHydrationWarning>
         <div className="text-center mb-8" suppressHydrationWarning>
           <div className="mb-6 inline-block" suppressHydrationWarning>

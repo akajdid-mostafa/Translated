@@ -22,12 +22,26 @@ const requestSchema = z.object({
   fileSize: z.number(),
   fileType: z.string(),
   fileUrl: z.string().optional(), // Will be set after upload
+  // Coupon information
+  couponCode: z.string().optional().nullable(),
+  discountAmount: z.number().optional().nullable(),
 });
 
-// Phone validation function
+// Phone validation function - more lenient to accept various formats
 function validatePhone(phone: string): boolean {
-  const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-  return phoneRegex.test(phone.replace(/\s/g, ''));
+  if (!phone || phone.trim().length === 0) {
+    return true; // Optional field, empty is valid
+  }
+  
+  // Remove all non-digit characters except +
+  const cleaned = phone.replace(/[^\d+]/g, '');
+  
+  // Allow formats like: +1234567890, +212762544011, 1234567890, 0762544011, etc.
+  // Must have at least 7 digits and maximum 16 digits (including country code)
+  // Can start with + followed by digits, or just digits
+  const phoneRegex = /^(\+?\d{7,16})$/;
+  
+  return phoneRegex.test(cleaned);
 }
 
 export async function POST(request: NextRequest) {
@@ -55,6 +69,8 @@ export async function POST(request: NextRequest) {
       originalFileName: formData.get("originalFileName") as string,
       fileSize: formData.get("fileSize") as string,
       fileType: formData.get("fileType") as string,
+      couponCode: formData.get("couponCode") as string || null,
+      discountAmount: formData.get("discountAmount") ? parseFloat(formData.get("discountAmount") as string) : null,
     };
 
     // Handle case where we have a Cloudinary URL but no file
@@ -113,9 +129,20 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Validate phone number if provided
-    if (requestData.customerPhone && !validatePhone(requestData.customerPhone)) {
-      return NextResponse.json({ error: "Invalid phone number format" }, { status: 400 });
+    // Validate and normalize phone number if provided
+    if (requestData.customerPhone && requestData.customerPhone.trim()) {
+      // Normalize phone number (remove spaces, dashes, parentheses, etc.)
+      const normalizedPhone = requestData.customerPhone.replace(/[^\d+]/g, '');
+      
+      if (!validatePhone(normalizedPhone)) {
+        console.error('Invalid phone format:', requestData.customerPhone, '-> normalized:', normalizedPhone);
+        return NextResponse.json({ 
+          error: "Invalid phone number format. Please use a valid format like +1234567890 or 1234567890" 
+        }, { status: 400 });
+      }
+      
+      // Store normalized phone number
+      requestData.customerPhone = normalizedPhone;
     }
 
     // Validate request data
@@ -133,6 +160,9 @@ export async function POST(request: NextRequest) {
     const validatedData = requestSchema.parse(dataToValidate);
 
     // Create translation request in database first to get the ID
+    // Use provided fileUrl if available, otherwise set to "pending" (will be updated in background)
+    const initialFileUrl = fileUrl || "pending";
+    
     const translationRequest = await prisma.translationRequest.create({
       data: {
         customerName: validatedData.customerName,
@@ -146,168 +176,20 @@ export async function POST(request: NextRequest) {
         specialization: validatedData.specialization,
         additionalNotes: validatedData.additionalNotes,
         numberOfPages: validatedData.numberOfPages,
-        estimatedPrice: validatedData.estimatedPrice, // Add estimatedPrice to database
+        estimatedPrice: validatedData.estimatedPrice,
         originalFileName: validatedData.originalFileName,
         fileSize: validatedData.fileSize,
         fileType: validatedData.fileType,
-        fileUrl: "pending", // Temporary, will be updated after upload
+        fileUrl: initialFileUrl, // Use provided URL or "pending"
+        couponCode: validatedData.couponCode || null,
+        discountAmount: validatedData.discountAmount || null,
         status: "PENDING",
       },
     });
 
     console.log(`Created request with ID: ${translationRequest.id}`);
 
-    // Now upload file to Cloudinary with request ID folder
-    let fileUrlResult = "";
-    let cloudinaryId = "";
-
-    try {
-      // Check if Cloudinary is configured
-      if (process.env.CLOUDINARY_CLOUD_NAME && 
-          process.env.CLOUDINARY_CLOUD_NAME !== "your-cloudinary-cloud-name" &&
-          process.env.CLOUDINARY_API_KEY &&
-          process.env.CLOUDINARY_API_SECRET) {
-        
-        if (file) {
-          // Regular file upload
-          const bytes = await file.arrayBuffer();
-          const buffer = Buffer.from(bytes);
-          
-          console.log(`Uploading file to Cloudinary for request ${translationRequest.id}: ${file.name} (${file.size} bytes)`);
-          
-          const uploadResult = await uploadToCloudinary(buffer, file.name, translationRequest.id) as any;
-          
-          console.log("Cloudinary upload result:", {
-            public_id: uploadResult?.public_id,
-            secure_url: uploadResult?.secure_url,
-            format: uploadResult?.format
-          });
-          
-          if (uploadResult && uploadResult.secure_url) {
-            fileUrlResult = uploadResult.secure_url;
-            cloudinaryId = uploadResult.public_id;
-          } else {
-            throw new Error("Cloudinary upload failed - no URL returned");
-          }
-        } else if (fileUrl) {
-          // File already exists in Cloudinary, organize it properly using Cloudinary's API
-          try {
-            // Import Cloudinary to use its API
-            const cloudinary = require('cloudinary').v2;
-            cloudinary.config({
-              cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-              api_key: process.env.CLOUDINARY_API_KEY,
-              api_secret: process.env.CLOUDINARY_API_SECRET,
-            });
-            
-            // Extract public ID from URL more carefully
-            // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{public_id}.{format}
-            console.log(`Processing Cloudinary URL: ${fileUrl}`);
-            
-            const urlObj = new URL(fileUrl);
-            const pathParts = urlObj.pathname.split('/');
-            const publicIdWithFormat = pathParts[pathParts.length - 1];
-            const publicId = publicIdWithFormat.replace(/\.[^/.]+$/, ''); // Remove file extension
-            
-            console.log(`Extracted public ID: ${publicId}`);
-            
-            // Check if file is already in the correct folder
-            if (publicId.includes(`translated-ae/requests/${translationRequest.id}`)) {
-              console.log(`File is already in the correct organized folder: ${publicId}`);
-              fileUrlResult = fileUrl;
-              cloudinaryId = publicId;
-            } else {
-              // Generate new folder path with request ID
-              const newFolder = `translated-ae/requests/${translationRequest.id}`;
-              const timestamp = Date.now();
-              const fileBaseName = requestData.originalFileName.replace(/\.[^/.]+$/, "");
-              const newPublicId = `${newFolder}/${timestamp}-${fileBaseName}`;
-              
-              console.log(`Moving Cloudinary file to organized folder: ${newFolder}`);
-              console.log(`New public ID will be: ${newPublicId}`);
-              
-              // Use Cloudinary's rename API to move the file to the organized folder
-              const renameResult = await cloudinary.uploader.rename(
-                publicId,
-                newPublicId,
-                { overwrite: true }
-              );
-              
-              if (renameResult && renameResult.secure_url) {
-                fileUrlResult = renameResult.secure_url;
-                cloudinaryId = renameResult.public_id;
-                console.log(`Successfully moved file. New URL: ${fileUrlResult}`);
-              } else {
-                throw new Error("Cloudinary file organization failed - no URL returned");
-              }
-            }
-          } catch (cloudinaryError) {
-            console.error("Cloudinary organization error:", cloudinaryError);
-            // If Cloudinary organization fails, fall back to using the existing URL
-            fileUrlResult = fileUrl;
-            console.log(`Using existing URL as fallback: ${fileUrl}`);
-          }
-        }
-      } else {
-        // Fallback to local storage
-        const { writeFile, mkdir } = await import("fs/promises");
-        const { join } = await import("path");
-        const { existsSync } = await import("fs");
-        
-        const uploadsDir = join(process.cwd(), "public", "uploads", translationRequest.id);
-        if (!existsSync(uploadsDir)) {
-          await mkdir(uploadsDir, { recursive: true });
-        }
-
-        let fileName = "";
-        let buffer: Buffer = Buffer.from([]); // Initialize with empty buffer
-        
-        if (file) {
-          // Regular file
-          fileName = file.name;
-          const bytes = await file.arrayBuffer();
-          buffer = Buffer.from(bytes);
-        } else if (fileUrl) {
-          // For pre-uploaded files in local storage, we would need to download them to organize locally
-          // This is a simplified approach - in production you might want to handle this differently
-          fileName = requestData.originalFileName || "file";
-          // In a real implementation, you would download the file from fileUrl
-          // For now, we'll just create a placeholder
-        }
-
-        const timestamp = Date.now();
-        const safeFileName = `${timestamp}-${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        const filePath = join(uploadsDir, safeFileName);
-
-        await writeFile(filePath, buffer);
-
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-        fileUrlResult = `${baseUrl}/uploads/${translationRequest.id}/${safeFileName}`;
-      }
-
-      // Update the request with the actual file URL
-      await prisma.translationRequest.update({
-        where: { id: translationRequest.id },
-        data: { fileUrl: fileUrlResult }
-      });
-
-      console.log(`File processed successfully for request ${translationRequest.id}: ${fileUrlResult}`);
-
-    } catch (uploadError) {
-      console.error("File processing error:", uploadError);
-      
-      // If processing fails, delete the request and return error
-      await prisma.translationRequest.delete({
-        where: { id: translationRequest.id }
-      });
-      
-      return NextResponse.json(
-        { error: "File processing failed. Please try again." },
-        { status: 500 }
-      );
-    }
-
-    // Create initial status history
+    // Create initial status history immediately
     await prisma.statusHistory.create({
       data: {
         requestId: translationRequest.id,
@@ -317,39 +199,190 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Send email notifications
-    try {
-      // Send confirmation email to customer
-      await sendRequestConfirmation(validatedData.customerEmail, translationRequest.id)
-      
-      // Send notification email to admin
-      const adminEmail = process.env.ADMIN_EMAIL || "mostafaakajdid6@gmail.com"
-      await sendAdminNotification(adminEmail, {
-        customerName: validatedData.customerName,
-        customerEmail: validatedData.customerEmail,
-        customerPhone: validatedData.customerPhone,
-        sourceLanguage: validatedData.sourceLanguage,
-        targetLanguage: validatedData.targetLanguage,
-        documentType: validatedData.documentType,
-        urgency: validatedData.urgency,
-        numberOfPages: validatedData.numberOfPages,
-        estimatedPrice: validatedData.estimatedPrice, // Use the actual estimated price
-        originalFileName: validatedData.originalFileName,
-        requestId: translationRequest.id,
-      })
+    // Process file and send emails in background (fire and forget)
+    // This allows us to return immediately to the client
+    (async () => {
+      try {
+        // Now upload file to Cloudinary with request ID folder
+        let fileUrlResult = "";
+        let cloudinaryId = "";
 
-      console.log(`Email notifications sent for request ${translationRequest.id}`);
-    } catch (emailError) {
-      console.error("Email sending error:", emailError);
-      // Don't fail the request if email fails
-    }
+        try {
+          // Check if Cloudinary is configured
+          if (process.env.CLOUDINARY_CLOUD_NAME && 
+            process.env.CLOUDINARY_CLOUD_NAME !== "your-cloudinary-cloud-name" &&
+            process.env.CLOUDINARY_API_KEY &&
+            process.env.CLOUDINARY_API_SECRET) {
+          
+          if (file) {
+            // Regular file upload
+            const bytes = await file.arrayBuffer();
+            const buffer = Buffer.from(bytes);
+            
+            console.log(`Uploading file to Cloudinary for request ${translationRequest.id}: ${file.name} (${file.size} bytes)`);
+            
+            const uploadResult = await uploadToCloudinary(buffer, file.name, translationRequest.id) as any;
+            
+            console.log("Cloudinary upload result:", {
+              public_id: uploadResult?.public_id,
+              secure_url: uploadResult?.secure_url,
+              format: uploadResult?.format
+            });
+            
+            if (uploadResult && uploadResult.secure_url) {
+              fileUrlResult = uploadResult.secure_url;
+              cloudinaryId = uploadResult.public_id;
+            } else {
+              throw new Error("Cloudinary upload failed - no URL returned");
+            }
+          } else if (fileUrl) {
+            // File already exists in Cloudinary, organize it properly using Cloudinary's API
+            try {
+              // Import Cloudinary to use its API
+              const cloudinary = require('cloudinary').v2;
+              cloudinary.config({
+                cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+                api_key: process.env.CLOUDINARY_API_KEY,
+                api_secret: process.env.CLOUDINARY_API_SECRET,
+              });
+              
+              // Extract public ID from URL more carefully
+              // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{public_id}.{format}
+              console.log(`Processing Cloudinary URL: ${fileUrl}`);
+              
+              const urlObj = new URL(fileUrl);
+              const pathParts = urlObj.pathname.split('/');
+              const publicIdWithFormat = pathParts[pathParts.length - 1];
+              const publicId = publicIdWithFormat.replace(/\.[^/.]+$/, ''); // Remove file extension
+              
+              console.log(`Extracted public ID: ${publicId}`);
+              
+              // Check if file is already in the correct folder
+              if (publicId.includes(`translated-ae/requests/${translationRequest.id}`)) {
+                console.log(`File is already in the correct organized folder: ${publicId}`);
+                fileUrlResult = fileUrl;
+                cloudinaryId = publicId;
+              } else {
+                // Generate new folder path with request ID
+                const newFolder = `translated-ae/requests/${translationRequest.id}`;
+                const timestamp = Date.now();
+                const fileBaseName = requestData.originalFileName.replace(/\.[^/.]+$/, "");
+                const newPublicId = `${newFolder}/${timestamp}-${fileBaseName}`;
+                
+                console.log(`Moving Cloudinary file to organized folder: ${newFolder}`);
+                console.log(`New public ID will be: ${newPublicId}`);
+                
+                // Use Cloudinary's rename API to move the file to the organized folder
+                const renameResult = await cloudinary.uploader.rename(
+                  publicId,
+                  newPublicId,
+                  { overwrite: true }
+                );
+                
+                if (renameResult && renameResult.secure_url) {
+                  fileUrlResult = renameResult.secure_url;
+                  cloudinaryId = renameResult.public_id;
+                  console.log(`Successfully moved file. New URL: ${fileUrlResult}`);
+                } else {
+                  throw new Error("Cloudinary file organization failed - no URL returned");
+                }
+              }
+            } catch (cloudinaryError) {
+              console.error("Cloudinary organization error:", cloudinaryError);
+              // If Cloudinary organization fails, fall back to using the existing URL
+              fileUrlResult = fileUrl;
+              console.log(`Using existing URL as fallback: ${fileUrl}`);
+            }
+          }
+        } else {
+          // Fallback to local storage
+          const { writeFile, mkdir } = await import("fs/promises");
+          const { join } = await import("path");
+          const { existsSync } = await import("fs");
+          
+          const uploadsDir = join(process.cwd(), "public", "uploads", translationRequest.id);
+          if (!existsSync(uploadsDir)) {
+            await mkdir(uploadsDir, { recursive: true });
+          }
 
+          let fileName = "";
+          let buffer: Buffer = Buffer.from([]); // Initialize with empty buffer
+          
+          if (file) {
+            // Regular file
+            fileName = file.name;
+            const bytes = await file.arrayBuffer();
+            buffer = Buffer.from(bytes);
+          } else if (fileUrl) {
+            // For pre-uploaded files in local storage, we would need to download them to organize locally
+            // This is a simplified approach - in production you might want to handle this differently
+            fileName = requestData.originalFileName || "file";
+            // In a real implementation, you would download the file from fileUrl
+            // For now, we'll just create a placeholder
+          }
+
+          const timestamp = Date.now();
+          const safeFileName = `${timestamp}-${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+          const filePath = join(uploadsDir, safeFileName);
+
+          await writeFile(filePath, buffer);
+
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          fileUrlResult = `${baseUrl}/uploads/${translationRequest.id}/${safeFileName}`;
+        }
+
+        // Update the request with the actual file URL (if different from initial)
+        if (fileUrlResult && fileUrlResult !== initialFileUrl) {
+          await prisma.translationRequest.update({
+            where: { id: translationRequest.id },
+            data: { fileUrl: fileUrlResult }
+          });
+        }
+
+        console.log(`File processed successfully for request ${translationRequest.id}: ${fileUrlResult}`);
+
+      } catch (uploadError) {
+        console.error("File processing error:", uploadError);
+        // Log error but don't fail the request - file can be processed later
+      }
+
+      // Send email notifications in background
+      try {
+        // Send confirmation email to customer
+        await sendRequestConfirmation(validatedData.customerEmail, translationRequest.id)
+        
+        // Send notification email to admin
+        const adminEmail = process.env.ADMIN_EMAIL || "mostafaakajdid6@gmail.com"
+        await sendAdminNotification(adminEmail, {
+          customerName: validatedData.customerName,
+          customerEmail: validatedData.customerEmail,
+          customerPhone: validatedData.customerPhone,
+          sourceLanguage: validatedData.sourceLanguage,
+          targetLanguage: validatedData.targetLanguage,
+          documentType: validatedData.documentType,
+          urgency: validatedData.urgency,
+          numberOfPages: validatedData.numberOfPages,
+          estimatedPrice: validatedData.estimatedPrice,
+          originalFileName: validatedData.originalFileName,
+          requestId: translationRequest.id,
+        })
+
+        console.log(`Email notifications sent for request ${translationRequest.id}`);
+      } catch (emailError) {
+        console.error("Email sending error:", emailError);
+        // Don't fail the request if email fails
+      }
+      } catch (bgError) {
+        console.error("Background processing error:", bgError);
+        // Log but don't fail - request is already created
+      }
+    })(); // Execute immediately in background
+
+    // Return response immediately with requestId
     return NextResponse.json({
       success: true,
       requestId: translationRequest.id,
       message: "Request submitted successfully",
-      fileUrl: fileUrlResult,
-      cloudinaryId: cloudinaryId
     });
 
   } catch (error) {

@@ -67,14 +67,6 @@ export async function POST(request: NextRequest) {
             const pageBreakRegex = /<w:br\s+w:type="page"\/>|<w:lastRenderedPageBreak\/>|<w:pgBr\/>/gi;
             const pageBreaks = (documentXml.match(pageBreakRegex) || []).length;
             
-            // Count actual page count: page breaks + 1 (first page)
-            // Also check for section breaks which might indicate pages
-            const sectionBreakRegex = /<w:sectPr>/gi;
-            const sections = (documentXml.match(sectionBreakRegex) || []).length;
-            
-            // Actual page count = page breaks + sections (if any) + 1 (first page)
-            actualPageCount = Math.max(1, pageBreaks + sections + 1);
-            
             // Extract text for word counting (remove XML tags)
             const textContent = documentXml
               .replace(/<[^>]+>/g, ' ') // Remove all XML tags
@@ -89,18 +81,24 @@ export async function POST(request: NextRequest) {
             
             words = countWords(textContent);
             
-            // If no explicit page breaks found, estimate based on document size
-            if (pageBreaks === 0 && sections === 0) {
-              // A typical Word page is around 2500 bytes in the XML structure
-              actualPageCount = Math.max(1, Math.ceil(file.size / 2500));
+            // Count actual page count: page breaks + 1 (first page)
+            // Only count explicit page breaks, not section breaks (sections don't always mean new pages)
+            actualPageCount = Math.max(1, pageBreaks + 1);
+            
+            // If no explicit page breaks found, estimate based on word count (more accurate than file size)
+            if (pageBreaks === 0) {
+              // Use word count: approximately 250 words per page
+              const WORDS_PER_PAGE = 250;
+              actualPageCount = Math.max(1, Math.ceil(words / WORDS_PER_PAGE));
             }
           } else {
             throw new Error('Could not extract document.xml');
           }
         } catch (zipError) {
-          // jszip not available or failed - use file size estimation
-          // Word documents: ~2500 bytes per page on average (NOT based on words)
-          actualPageCount = Math.max(1, Math.ceil(file.size / 2500));
+          // jszip not available or failed - use better file size estimation
+          // DOCX files have a lot of XML overhead, so 1 page is typically 8000-12000 bytes
+          // Use 10000 bytes per page for more accurate estimation
+          actualPageCount = Math.max(1, Math.ceil(file.size / 10000));
           // Estimate words separately (NOT used for page count)
           words = Math.round((file.size / 1000) * 2);
         }
@@ -111,9 +109,10 @@ export async function POST(request: NextRequest) {
         });
       } catch (error) {
         console.error('Error processing .docx:', error);
-        // Fallback: estimate pages based on file size (NOT from words)
-        // Word documents: ~2500 bytes per page on average
-        const estimatedPages = Math.max(1, Math.ceil(file.size / 2500));
+        // Fallback: estimate pages based on file size
+        // DOCX files have XML overhead, so 1 page is typically 8000-12000 bytes
+        // Use 10000 bytes per page for more accurate estimation
+        const estimatedPages = Math.max(1, Math.ceil(file.size / 10000));
         // Estimate words separately (NOT used for page count)
         const estimatedWords = Math.round((file.size / 1000) * 2);
         

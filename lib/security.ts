@@ -50,10 +50,21 @@ export const validateEmail = (email: string): boolean => {
   return emailRegex.test(email)
 }
 
-// Phone validation
+// Phone validation - more lenient to accept various formats
 export const validatePhone = (phone: string): boolean => {
-  const phoneRegex = /^[+]?[1-9][\d]{0,15}$/
-  return phoneRegex.test(phone.replace(/\s/g, ""))
+  if (!phone || phone.trim().length === 0) {
+    return true; // Optional field, empty is valid
+  }
+  
+  // Remove all non-digit characters except +
+  const cleaned = phone.replace(/[^\d+]/g, '');
+  
+  // Allow formats like: +1234567890, +212762544011, 1234567890, 0762544011, etc.
+  // Must have at least 7 digits and maximum 16 digits (including country code)
+  // Can start with + followed by digits, or just digits
+  const phoneRegex = /^(\+?\d{7,16})$/;
+  
+  return phoneRegex.test(cleaned);
 }
 
 // CSRF protection

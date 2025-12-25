@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
@@ -67,10 +68,44 @@ export function DocumentUploadForm() {
     sourceLanguage: "",
     targetLanguage: "",
     documentType: "",
-    urgency: "STANDARD",
+    serviceLevel: "STANDARD_CERTIFIED", // STANDARD_CERTIFIED or SWORN
+    turnaround: "STANDARD", // STANDARD, NEXT_DAY, or SAME_DAY
     specialization: "",
     additionalNotes: "",
   });
+  
+  // Hard copy delivery state
+  const [hardCopyDelivery, setHardCopyDelivery] = useState(false);
+  
+  // Pricing settings from API
+  const [pricingSettings, setPricingSettings] = useState({
+    standardCertifiedPricePerPage: 49,
+    swornPricePerPage: 75,
+    standardMultiplier: 1.0,
+    nextDayMultiplier: 1.5,
+    sameDayMultiplier: 2.0,
+    hardCopyFee: 50,
+  });
+
+  // Fetch pricing settings on mount (with cache busting)
+  useEffect(() => {
+    const fetchPricing = async () => {
+      try {
+        // Add cache busting to ensure fresh data
+        const response = await fetch("/api/pricing?t=" + Date.now(), {
+          cache: 'no-store',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setPricingSettings(data);
+        }
+      } catch (error) {
+        console.error("Error fetching pricing:", error);
+        // Use default values if fetch fails
+      }
+    };
+    fetchPricing();
+  }, []);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -266,6 +301,8 @@ export function DocumentUploadForm() {
       !formData.sourceLanguage ||
       !formData.targetLanguage ||
       !formData.documentType ||
+      !formData.serviceLevel ||
+      !formData.turnaround ||
       !numPages
     ) {
       alert("Please fill in all required Document & Translation Details.");
@@ -285,11 +322,14 @@ export function DocumentUploadForm() {
     setIsSubmitting(true);
 
     try {
-      // Prepare data for review page (same as before)
+      // Prepare data for review page
       const reviewData = {
         ...formData,
         numPages: numPages,
         estimatedPrice: calculateOrderTotal().toString(),
+        serviceLevel: formData.serviceLevel,
+        turnaround: formData.turnaround,
+        hardCopy: hardCopyDelivery,
         originalFileName: uploadedFiles[0]?.file.name || "",
         fileUrl: uploadedFiles[0]?.fileUrl || "",
         fileSize: uploadedFiles[0]?.file.size.toString() || "",
@@ -330,12 +370,34 @@ export function DocumentUploadForm() {
   };
 
   const calculateOrderTotal = () => {
-    // Calculate total based on number of pages
+    // Calculate total based on: (Price per page × Service Type) × Turnaround Multiplier + Hard Copy Fee
     const pages = parseInt(numPages, 10);
     if (isNaN(pages) || pages <= 0) {
-      return 0; // Return 0 if number of pages is invalid or not set
+      return 0;
     }
-    return pages * 350; // Each page costs 350 DH
+    
+    // Step 1: Get base price per page based on service type
+    const basePricePerPage = formData.serviceLevel === "SWORN" 
+      ? pricingSettings.swornPricePerPage 
+      : pricingSettings.standardCertifiedPricePerPage;
+    
+    // Step 2: Calculate base translation price
+    const baseTranslationPrice = pages * basePricePerPage;
+    
+    // Step 3: Apply turnaround multiplier
+    let multiplier = pricingSettings.standardMultiplier;
+    if (formData.turnaround === "NEXT_DAY") {
+      multiplier = pricingSettings.nextDayMultiplier;
+    } else if (formData.turnaround === "SAME_DAY") {
+      multiplier = pricingSettings.sameDayMultiplier;
+    }
+    
+    const translationPrice = baseTranslationPrice * multiplier;
+    
+    // Step 4: Add hard copy fee if selected
+    const hardCopyFee = hardCopyDelivery ? pricingSettings.hardCopyFee : 0;
+    
+    return translationPrice + hardCopyFee;
   };
 
   return (
@@ -547,27 +609,65 @@ export function DocumentUploadForm() {
                 </div>
               </div>
 
+              <div className="grid md:grid-cols-2 gap-4" suppressHydrationWarning>
+                <div className="space-y-2" suppressHydrationWarning>
+                  <Label htmlFor="serviceLevel">SERVICE LEVEL *</Label>
+                  <Select
+                    value={formData.serviceLevel}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, serviceLevel: value })
+                    }
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select service level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="STANDARD_CERTIFIED">Standard Certified</SelectItem>
+                      <SelectItem value="SWORN">Sworn (Official Court)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2" suppressHydrationWarning>
+                  <Label htmlFor="turnaround">TURNAROUND *</Label>
+                  <Select
+                    value={formData.turnaround}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, turnaround: value })
+                    }
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select turnaround" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="STANDARD">Standard (3 Business Days)</SelectItem>
+                      <SelectItem value="NEXT_DAY">Next-Day (Before 6PM)</SelectItem>
+                      <SelectItem value="SAME_DAY">Same-Day (Before 12PM)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Hard Copy Delivery */}
               <div className="space-y-2" suppressHydrationWarning>
-                <Label htmlFor="urgency">Urgency</Label>
-                <Select
-                  value={formData.urgency}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, urgency: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select urgency level" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="STANDARD">Standard</SelectItem>
-                    <SelectItem value="URGENT">Urgent</SelectItem>
-                    <SelectItem value="EXPRESS">Express</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="hardCopy" className="text-base font-medium">Add Hard Copy Delivery</Label>
+                    <p className="text-sm text-gray-500 mt-1">
+                      We will ship the stamped original paper version to your address.
+                    </p>
+                  </div>
+                  <Switch
+                    id="hardCopy"
+                    checked={hardCopyDelivery}
+                    onCheckedChange={setHardCopyDelivery}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2" suppressHydrationWarning>
-                <Label htmlFor="specialization">Special Instructions</Label>
+                <Label htmlFor="specialization">SPECIAL INSTRUCTIONS (OPTIONAL)</Label>
                 <Textarea
                   id="specialization"
                   placeholder="Add any specific requirements or instructions for your translation..."

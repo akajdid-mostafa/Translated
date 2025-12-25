@@ -62,8 +62,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid email format" }, { status: 400 })
     }
 
-    if (requestData.customerPhone && !validatePhone(requestData.customerPhone)) {
-      return NextResponse.json({ error: "Invalid phone number format" }, { status: 400 })
+    // Validate and normalize phone number if provided
+    if (requestData.customerPhone && requestData.customerPhone.trim()) {
+      // Normalize phone number (remove spaces, dashes, parentheses, etc.)
+      const normalizedPhone = requestData.customerPhone.replace(/[^\d+]/g, '');
+      
+      if (!validatePhone(normalizedPhone)) {
+        console.error('Invalid phone format:', requestData.customerPhone, '-> normalized:', normalizedPhone);
+        return NextResponse.json({ 
+          error: "Invalid phone number format. Please use a valid format like +1234567890 or 1234567890" 
+        }, { status: 400 });
+      }
+      
+      // Store normalized phone number
+      requestData.customerPhone = normalizedPhone;
     }
 
     // Validate request data

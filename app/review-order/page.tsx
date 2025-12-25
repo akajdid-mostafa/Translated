@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
-import { CheckCircle, Clock, CalendarDays, ChevronLeft, MapPin, FileText, Package } from 'lucide-react'
+import { CheckCircle, Clock, CalendarDays, ChevronLeft, MapPin, FileText, Package, User, Mail, Phone, Loader2, Tag, X } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
@@ -22,7 +22,9 @@ interface FormData {
   sourceLanguage: string;
   targetLanguage: string;
   documentType: string;
-  urgency: string;
+  serviceLevel?: string; // STANDARD_CERTIFIED or SWORN
+  turnaround?: string; // STANDARD, NEXT_DAY, or SAME_DAY
+  urgency?: string; // Legacy field
   specialization: string;
   additionalNotes: string;
   numPages: string;
@@ -47,7 +49,7 @@ function ReviewOrderContent() {
   const [selectedDelivery, setSelectedDelivery] = useState("STANDARD"); // Default to Standard
   const [finalPrice, setFinalPrice] = useState(0);
   const [hardCopyDelivery, setHardCopyDelivery] = useState(false);
-  const [hardCopyDeliveryType, setHardCopyDeliveryType] = useState("STANDARD");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState({
     street: '',
     city: '',
@@ -55,6 +57,32 @@ function ReviewOrderContent() {
     country: '',
     deliveryInstructions: ''
   });
+  
+  // Coupon state
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountAmount: number;
+    discountType: string;
+  } | null>(null);
+  const [couponError, setCouponError] = useState("");
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+  const [priceBeforeDiscount, setPriceBeforeDiscount] = useState(0);
+  
+  // Pricing settings from API
+  const [pricingSettings, setPricingSettings] = useState({
+    standardCertifiedPricePerPage: 49,
+    swornPricePerPage: 75,
+    standardMultiplier: 1.0,
+    nextDayMultiplier: 1.5,
+    sameDayMultiplier: 2.0,
+    hardCopyFee: 50,
+  });
+  const [pricingLoaded, setPricingLoaded] = useState(false);
+  
+  // Service level and turnaround from form
+  const [serviceLevel, setServiceLevel] = useState("STANDARD_CERTIFIED");
+  const [turnaround, setTurnaround] = useState("STANDARD");
 
   // Map urgency from first stage to delivery option
   const mapUrgencyToDelivery = (urgency: string): string => {
@@ -69,49 +97,150 @@ function ReviewOrderContent() {
     }
   };
 
-  const calculatePrice = (numPages: string, deliveryType: string, includeHardCopy: boolean = false, hardCopyDeliveryType: string = "STANDARD") => {
+  // Fixed pricing calculation algorithm
+  // Formula: (Price per page × Service Type) × Turnaround Multiplier + Hard Copy Fee - Coupon
+  const calculatePrice = (numPages: string, currentServiceLevel: string, currentTurnaround: string, includeHardCopy: boolean = false, applyCoupon: boolean = true) => {
     const pages = parseInt(numPages, 10);
     if (isNaN(pages) || pages <= 0) return 0;
 
-    let basePricePerPage = 350; // Standard price per page
-
-    switch (deliveryType) {
-      case "SAME_DAY":
-        basePricePerPage = 550;
-        break;
-      case "NEXT_DAY":
-        basePricePerPage = 450;
-        break;
-      case "STANDARD":
-      default:
-        basePricePerPage = 350;
-        break;
+    // Step 1: Get base price per page based on service type
+    const basePricePerPage = currentServiceLevel === "SWORN" 
+      ? pricingSettings.swornPricePerPage 
+      : pricingSettings.standardCertifiedPricePerPage;
+    
+    // Step 2: Calculate base translation price
+    const baseTranslationPrice = pages * basePricePerPage;
+    
+    // Step 3: Apply turnaround multiplier
+    let multiplier = pricingSettings.standardMultiplier;
+    if (currentTurnaround === "NEXT_DAY") {
+      multiplier = pricingSettings.nextDayMultiplier;
+    } else if (currentTurnaround === "SAME_DAY") {
+      multiplier = pricingSettings.sameDayMultiplier;
     }
     
-    const translationPrice = pages * basePricePerPage;
-    let hardCopyFee = 0;
-    if (includeHardCopy) {
-      hardCopyFee = 50; // Base hard copy fee
-      if (hardCopyDeliveryType === "EXPRESS") {
-        hardCopyFee += 30; // Additional express delivery fee
-      }
+    const translationPrice = baseTranslationPrice * multiplier;
+    
+    // Step 4: Add hard copy fee if selected
+    const hardCopyFee = includeHardCopy ? pricingSettings.hardCopyFee : 0;
+    
+    // Step 5: Calculate subtotal
+    let subtotal = translationPrice + hardCopyFee;
+    
+    // Step 6: Apply coupon discount (if applicable)
+    if (applyCoupon && appliedCoupon) {
+      subtotal = Math.max(0, subtotal - appliedCoupon.discountAmount);
     }
     
-    return translationPrice + hardCopyFee;
+    return subtotal;
   };
+
+  // Validate and apply coupon
+  const validateCoupon = async (code: string, totalAmount: number) => {
+    if (!code.trim()) {
+      setCouponError("Please enter a coupon code");
+      return;
+    }
+
+    setIsValidatingCoupon(true);
+    setCouponError("");
+
+    try {
+      const response = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          code: code.trim(),
+          totalAmount: totalAmount,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.valid) {
+        setAppliedCoupon({
+          code: data.coupon.code,
+          discountAmount: data.discountAmount,
+          discountType: data.coupon.discountType,
+        });
+        // Update final price with discount
+        setFinalPrice(data.finalAmount);
+        setCouponError("");
+        setCouponCode(""); // Clear input
+      } else {
+        setAppliedCoupon(null);
+        setCouponError(data.error || "Invalid coupon code");
+        // Reset to price without coupon
+        setFinalPrice(totalAmount);
+      }
+    } catch (error) {
+      console.error("Error validating coupon:", error);
+      setCouponError("Failed to validate coupon. Please try again.");
+      setAppliedCoupon(null);
+      setFinalPrice(totalAmount);
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponError("");
+    // Reset to price before discount
+    setFinalPrice(priceBeforeDiscount);
+  };
+
+  // Fetch pricing settings on mount (with cache busting)
+  useEffect(() => {
+    const fetchPricing = async () => {
+      try {
+        // Add cache busting to ensure fresh data
+        const response = await fetch("/api/pricing?t=" + Date.now(), {
+          cache: 'no-store',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Fetched pricing from API:", data); // Debug log
+          setPricingSettings(data);
+          setPricingLoaded(true);
+        } else {
+          console.error("Failed to fetch pricing, status:", response.status);
+          setPricingLoaded(true); // Still set to true to prevent infinite loading
+        }
+      } catch (error) {
+        console.error("Error fetching pricing:", error);
+        // Use default values if fetch fails
+        setPricingLoaded(true); // Still set to true to prevent infinite loading
+      }
+    };
+    fetchPricing();
+  }, []);
 
   useEffect(() => {
     const data = searchParams.get('formData');
     if (data) {
       const parsedData: FormData = JSON.parse(data);
       setFormData(parsedData);
-      // Map urgency to delivery option and set it
+      // Set service level and turnaround from form
+      if (parsedData.serviceLevel) {
+        setServiceLevel(parsedData.serviceLevel);
+      }
+      if (parsedData.turnaround) {
+        setTurnaround(parsedData.turnaround);
+        // Map turnaround to selectedDelivery for backward compatibility
+        setSelectedDelivery(parsedData.turnaround);
+      } else if (parsedData.urgency) {
+        // Fallback to urgency if turnaround not provided
       const mappedDelivery = mapUrgencyToDelivery(parsedData.urgency || "STANDARD");
       setSelectedDelivery(mappedDelivery);
+        setTurnaround(mappedDelivery);
+      }
       // Set hard copy delivery state if it was selected in the form
       if (parsedData.hardCopy) {
         setHardCopyDelivery(true);
-        setHardCopyDeliveryType(parsedData.hardCopyDelivery || "STANDARD");
         // Parse delivery address if it exists
         if (parsedData.deliveryAddress) {
           // Try to parse the address if it's in the format "street, city, postal, country"
@@ -135,19 +264,29 @@ function ReviewOrderContent() {
           }
         }
       }
-      // Set initial price based on mapped delivery option
-      setFinalPrice(calculatePrice(parsedData.numPages, mappedDelivery, parsedData.hardCopy || false));
     } else {
       // Redirect back if no data is present
       router.push('/');
     }
   }, [searchParams, router]);
 
+  // Recalculate price whenever form data, service level, turnaround, or pricing settings change
   useEffect(() => {
     if (formData) {
-      setFinalPrice(calculatePrice(formData.numPages, selectedDelivery, hardCopyDelivery, hardCopyDeliveryType));
+      // Calculate price without coupon first
+      const priceWithoutCoupon = calculatePrice(formData.numPages, serviceLevel, turnaround, hardCopyDelivery, false);
+      setPriceBeforeDiscount(priceWithoutCoupon);
+      
+      // If coupon is applied, re-validate it with the new price
+      if (appliedCoupon && priceWithoutCoupon > 0) {
+        validateCoupon(appliedCoupon.code, priceWithoutCoupon);
+      } else {
+        // Calculate final price with coupon if available
+        const finalPriceWithCoupon = calculatePrice(formData.numPages, serviceLevel, turnaround, hardCopyDelivery, true);
+        setFinalPrice(finalPriceWithCoupon);
+      }
     }
-  }, [selectedDelivery, formData, hardCopyDelivery, hardCopyDeliveryType]);
+  }, [serviceLevel, turnaround, formData, hardCopyDelivery, appliedCoupon, pricingSettings]);
 
   const handleConfirmOrder = async () => {
     if (!formData) return;
@@ -167,13 +306,16 @@ function ReviewOrderContent() {
       }
     }
 
+    setIsSubmitting(true);
     try {
       // Create FormData for the new organized upload endpoint
       // Pass existing file information instead of re-downloading the file
       const formDataToSend = new FormData();
       formDataToSend.append('customerName', `${formData.firstName} ${formData.lastName}`);
       formDataToSend.append('customerEmail', formData.customerEmail);
-      formDataToSend.append('customerPhone', formData.customerPhone);
+      // Normalize phone number (remove spaces, dashes, parentheses, etc.)
+      const normalizedPhone = formData.customerPhone ? formData.customerPhone.replace(/[^\d+]/g, '') : '';
+      formDataToSend.append('customerPhone', normalizedPhone);
       
       // Build full delivery address if hard copy is requested
       let fullAddress = '';
@@ -191,15 +333,29 @@ function ReviewOrderContent() {
       }
       formDataToSend.append('customerAddress', fullAddress);
       formDataToSend.append('hardCopyDelivery', hardCopyDelivery ? 'true' : 'false');
-      formDataToSend.append('hardCopyDeliveryType', hardCopyDeliveryType);
       formDataToSend.append('sourceLanguage', formData.sourceLanguage);
       formDataToSend.append('targetLanguage', formData.targetLanguage);
       formDataToSend.append('documentType', formData.documentType);
-      formDataToSend.append('urgency', selectedDelivery);
+      // Send service level and turnaround
+      if (formData.serviceLevel) {
+        formDataToSend.append('serviceLevel', formData.serviceLevel);
+      }
+      if (turnaround) {
+        formDataToSend.append('turnaround', turnaround);
+        formDataToSend.append('urgency', turnaround); // For backward compatibility
+      } else {
+        formDataToSend.append('urgency', selectedDelivery);
+      }
       formDataToSend.append('specialization', formData.specialization || '');
       formDataToSend.append('additionalNotes', formData.additionalNotes || '');
       formDataToSend.append('numberOfPages', formData.numPages);
-      formDataToSend.append('estimatedPrice', finalPrice.toString()); // Add the calculated final price
+      formDataToSend.append('estimatedPrice', finalPrice.toString()); // Add the calculated final price (with coupon discount)
+      
+      // Add coupon information if applied
+      if (appliedCoupon) {
+        formDataToSend.append('couponCode', appliedCoupon.code);
+        formDataToSend.append('discountAmount', appliedCoupon.discountAmount.toString());
+      }
       formDataToSend.append('originalFileName', formData.originalFileName);
       formDataToSend.append('fileUrl', formData.fileUrl);
       formDataToSend.append('fileSize', formData.fileSize);
@@ -224,6 +380,8 @@ function ReviewOrderContent() {
     } catch (error) {
       console.error("Error confirming order:", error);
       alert("An error occurred while confirming your order. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -253,6 +411,44 @@ function ReviewOrderContent() {
           {/* Left Column: Order Details */}
           <div className="lg:col-span-2 space-y-6" suppressHydrationWarning>
 
+            {/* Customer Information */}
+            <Card className="border border-gray-200">
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                  <User className="w-5 h-5" />
+                  Contact Information
+                </CardTitle>
+                <CardDescription className="text-sm">Your contact details for order updates</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-500 mb-1 flex items-center gap-1.5">
+                      <User className="w-4 h-4" />
+                      Full Name
+                    </p>
+                    <p className="font-medium text-gray-900">{formData.firstName} {formData.lastName}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1 flex items-center gap-1.5">
+                      <Mail className="w-4 h-4" />
+                      Email Address
+                    </p>
+                    <p className="font-medium text-gray-900 break-all">{formData.customerEmail}</p>
+                  </div>
+                  {formData.customerPhone && (
+                    <div>
+                      <p className="text-gray-500 mb-1 flex items-center gap-1.5">
+                        <Phone className="w-4 h-4" />
+                        Phone Number
+                      </p>
+                      <p className="font-medium text-gray-900">{formData.customerPhone}</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Order Summary */}
             <Card className="border border-gray-200">
               <CardHeader>
@@ -280,7 +476,7 @@ function ReviewOrderContent() {
                     <div className="col-span-2">
                       <p className="text-gray-500 mb-1">Hard Copy</p>
                       <p className="font-medium text-[#076e32]">
-                        ✓ Selected ({hardCopyDeliveryType === "EXPRESS" ? "Express" : "Standard"} Delivery)
+                        ✓ Selected
                       </p>
                     </div>
                   )}
@@ -306,54 +502,52 @@ function ReviewOrderContent() {
               </CardContent>
             </Card>
 
-            {/* Delivery Time Selection */}
+            {/* Turnaround Selection */}
             <Card className="border border-gray-200">
           <CardHeader>
-                <CardTitle className="text-lg font-semibold">Choose Your Delivery Time</CardTitle>
+                <CardTitle className="text-lg font-semibold">Choose Your Turnaround Time</CardTitle>
                 <CardDescription className="text-sm">When would you like to receive your digital scanned copy?</CardDescription>
           </CardHeader>
           <CardContent>
-            <RadioGroup value={selectedDelivery} onValueChange={setSelectedDelivery} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Label htmlFor="same-day" className={`flex flex-col items-center justify-between rounded-lg border-2 p-4 cursor-pointer transition-all ${
-                    selectedDelivery === "SAME_DAY" 
-                      ? "border-[#076e32] bg-green-50" 
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}>
-                <RadioGroupItem value="SAME_DAY" id="same-day" className="sr-only" />
-                <div className="flex items-center justify-between w-full mb-3">
-                      <Clock className={`h-6 w-6 ${selectedDelivery === "SAME_DAY" ? "text-[#076e32]" : "text-gray-400"}`} />
-                      <CheckCircle className={`h-5 w-5 ${selectedDelivery === "SAME_DAY" ? "text-[#076e32]" : "text-gray-300"}`} />
-                </div>
-                    <span className="block w-full text-center font-semibold mb-1 text-gray-900">Same Day</span>
-                    <span className="block w-full text-center text-xs text-gray-500">SAR 550/page • Before 12:00 AST</span>
-              </Label>
-
-                  <Label htmlFor="next-day" className={`flex flex-col items-center justify-between rounded-lg border-2 p-4 cursor-pointer transition-all ${
-                    selectedDelivery === "NEXT_DAY" 
-                      ? "border-[#076e32] bg-green-50" 
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}>
-                <RadioGroupItem value="NEXT_DAY" id="next-day" className="sr-only" />
-                <div className="flex items-center justify-between w-full mb-3">
-                      <CalendarDays className={`h-6 w-6 ${selectedDelivery === "NEXT_DAY" ? "text-[#076e32]" : "text-gray-400"}`} />
-                      <CheckCircle className={`h-5 w-5 ${selectedDelivery === "NEXT_DAY" ? "text-[#076e32]" : "text-gray-300"}`} />
-                </div>
-                    <span className="block w-full text-center font-semibold mb-1 text-gray-900">Next Day</span>
-                    <span className="block w-full text-center text-xs text-gray-500">SAR 450/page • Before 18:00 AST</span>
-              </Label>
-
-                  <Label htmlFor="standard" className={`flex flex-col items-center justify-between rounded-lg border-2 p-4 cursor-pointer transition-all ${
-                    selectedDelivery === "STANDARD" 
+            <RadioGroup value={turnaround} onValueChange={(value) => { setTurnaround(value); setSelectedDelivery(value); }} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Label htmlFor="standard" className={`flex flex-col items-center justify-between rounded-lg border-2 p-4 cursor-pointer transition-all ${
+                    turnaround === "STANDARD" 
                       ? "border-[#076e32] bg-green-50" 
                       : "border-gray-200 bg-white hover:border-gray-300"
                   }`}>
                 <RadioGroupItem value="STANDARD" id="standard" className="sr-only" />
                 <div className="flex items-center justify-between w-full mb-3">
-                      <MapPin className={`h-6 w-6 ${selectedDelivery === "STANDARD" ? "text-[#076e32]" : "text-gray-400"}`} />
-                      <CheckCircle className={`h-5 w-5 ${selectedDelivery === "STANDARD" ? "text-[#076e32]" : "text-gray-300"}`} />
+                      <MapPin className={`h-6 w-6 ${turnaround === "STANDARD" ? "text-[#076e32]" : "text-gray-400"}`} />
+                      <CheckCircle className={`h-5 w-5 ${turnaround === "STANDARD" ? "text-[#076e32]" : "text-gray-300"}`} />
                 </div>
                     <span className="block w-full text-center font-semibold mb-1 text-gray-900">Standard</span>
-                    <span className="block w-full text-center text-xs text-gray-500">SAR 350/page • 3 business days</span>
+                    <span className="block w-full text-center text-xs text-gray-500">Multiplier: x {pricingSettings.standardMultiplier} • 3 business days</span>
+              </Label>
+              <Label htmlFor="next-day" className={`flex flex-col items-center justify-between rounded-lg border-2 p-4 cursor-pointer transition-all ${
+                    turnaround === "NEXT_DAY" 
+                      ? "border-[#076e32] bg-green-50" 
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}>
+                <RadioGroupItem value="NEXT_DAY" id="next-day" className="sr-only" />
+                <div className="flex items-center justify-between w-full mb-3">
+                      <CalendarDays className={`h-6 w-6 ${turnaround === "NEXT_DAY" ? "text-[#076e32]" : "text-gray-400"}`} />
+                      <CheckCircle className={`h-5 w-5 ${turnaround === "NEXT_DAY" ? "text-[#076e32]" : "text-gray-300"}`} />
+                </div>
+                    <span className="block w-full text-center font-semibold mb-1 text-gray-900">Next Day</span>
+                    <span className="block w-full text-center text-xs text-gray-500">Multiplier: x {pricingSettings.nextDayMultiplier} • Before 18:00 AST</span>
+              </Label>
+                  <Label htmlFor="same-day" className={`flex flex-col items-center justify-between rounded-lg border-2 p-4 cursor-pointer transition-all ${
+                    turnaround === "SAME_DAY" 
+                      ? "border-[#076e32] bg-green-50" 
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}>
+                <RadioGroupItem value="SAME_DAY" id="same-day" className="sr-only" />
+                <div className="flex items-center justify-between w-full mb-3">
+                      <Clock className={`h-6 w-6 ${turnaround === "SAME_DAY" ? "text-[#076e32]" : "text-gray-400"}`} />
+                      <CheckCircle className={`h-5 w-5 ${turnaround === "SAME_DAY" ? "text-[#076e32]" : "text-gray-300"}`} />
+                </div>
+                    <span className="block w-full text-center font-semibold mb-1 text-gray-900">Same Day</span>
+                    <span className="block w-full text-center text-xs text-gray-500">Multiplier: x {pricingSettings.sameDayMultiplier} • Before 12:00 AST</span>
               </Label>
             </RadioGroup>
           </CardContent>
@@ -374,9 +568,14 @@ function ReviewOrderContent() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="hard-copy-toggle" className="text-sm font-medium cursor-pointer">
-                    Add hard copy (paper)
-                  </Label>
+                  <div>
+                    <Label htmlFor="hard-copy-toggle" className="text-sm font-medium cursor-pointer">
+                      Add Hard Copy Delivery
+                    </Label>
+                    <p className="text-xs text-gray-500 mt-1">
+                      We will ship the stamped original paper version to your address.
+                    </p>
+                  </div>
                   <Switch
                     id="hard-copy-toggle"
                     checked={hardCopyDelivery}
@@ -386,28 +585,12 @@ function ReviewOrderContent() {
                 
                 {hardCopyDelivery && (
                   <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
-                    <div className="space-y-2" suppressHydrationWarning>
-                      <Label htmlFor="hardCopyDeliveryType" className="text-sm font-medium">Delivery Type</Label>
-                      <Select
-                        value={hardCopyDeliveryType}
-                        onValueChange={setHardCopyDeliveryType}
-                      >
-                        <SelectTrigger className="text-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="STANDARD">Standard</SelectItem>
-                          <SelectItem value="EXPRESS">Express</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
                     <div className="space-y-3">
                       <div className="space-y-2">
-                        <Label htmlFor="street" className="text-sm font-medium">Delivery Address *</Label>
+                        <Label htmlFor="street" className="text-sm font-medium">STREET ADDRESS / BUILDING *</Label>
                         <Input
                           id="street"
-                          placeholder="Street address"
+                          placeholder="Building No, Street Name, District..."
                           value={deliveryAddress.street}
                           onChange={(e) => setDeliveryAddress({ ...deliveryAddress, street: e.target.value })}
                           required={hardCopyDelivery}
@@ -415,30 +598,32 @@ function ReviewOrderContent() {
                         />
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <Input
-                            id="city"
-                            placeholder="City"
-                            value={deliveryAddress.city}
-                            onChange={(e) => setDeliveryAddress({ ...deliveryAddress, city: e.target.value })}
-                            required={hardCopyDelivery}
-                            className="text-sm"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Input
-                            id="postalCode"
-                            placeholder="Postal Code"
-                            value={deliveryAddress.postalCode}
-                            onChange={(e) => setDeliveryAddress({ ...deliveryAddress, postalCode: e.target.value })}
-                            required={hardCopyDelivery}
-                            className="text-sm"
-                          />
-                        </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="city" className="text-sm font-medium">CITY *</Label>
+                        <Input
+                          id="city"
+                          placeholder="City"
+                          value={deliveryAddress.city}
+                          onChange={(e) => setDeliveryAddress({ ...deliveryAddress, city: e.target.value })}
+                          required={hardCopyDelivery}
+                          className="text-sm"
+                        />
                       </div>
                       
                       <div className="space-y-2">
+                        <Label htmlFor="postalCode" className="text-sm font-medium">POSTAL CODE *</Label>
+                        <Input
+                          id="postalCode"
+                          placeholder="Postal Code"
+                          value={deliveryAddress.postalCode}
+                          onChange={(e) => setDeliveryAddress({ ...deliveryAddress, postalCode: e.target.value })}
+                          required={hardCopyDelivery}
+                          className="text-sm"
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="country" className="text-sm font-medium">COUNTRY *</Label>
                         <Input
                           id="country"
                           placeholder="Country"
@@ -450,20 +635,20 @@ function ReviewOrderContent() {
                       </div>
                       
                       <div className="space-y-2">
-                        <Label htmlFor="deliveryInstructions" className="text-sm">Delivery Instructions (Optional)</Label>
+                        <Label htmlFor="deliveryInstructions" className="text-sm font-medium">DELIVERY INSTRUCTIONS (OPTIONAL)</Label>
                         <Textarea
                           id="deliveryInstructions"
-                          placeholder="Any special delivery instructions"
+                          placeholder="Additional delivery instructions, landmarks, or special notes..."
                           value={deliveryAddress.deliveryInstructions}
                           onChange={(e) => setDeliveryAddress({ ...deliveryAddress, deliveryInstructions: e.target.value })}
-                          rows={2}
+                          rows={3}
                           className="text-sm"
                         />
                       </div>
                     </div>
                     
                     <p className="text-xs text-gray-500 pt-2 border-t">
-                      Digital PDF is always included for free. Hard copy fee: 50 SAR
+                      Digital PDF is always included for free. Hard copy preparation fee: {pricingSettings.hardCopyFee} SAR
                     </p>
                   </div>
                 )}
@@ -482,29 +667,144 @@ function ReviewOrderContent() {
           </CardHeader>
           <CardContent className="space-y-4">
                 <div className="space-y-3" suppressHydrationWarning>
+                  {/* Price Breakdown */}
                   <div className="flex justify-between text-sm" suppressHydrationWarning>
-                    <span className="text-gray-600">Translation ({formData.numPages} pages × {calculatePrice("1", selectedDelivery, false)} SAR):</span>
-                    <span className="font-medium">{calculatePrice(formData.numPages, selectedDelivery, false)} SAR</span>
+                    <span className="text-gray-600">Number of Pages:</span>
+                    <span className="font-medium">{formData.numPages} {parseInt(formData.numPages) === 1 ? 'Page' : 'Pages'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm" suppressHydrationWarning>
+                    <span className="text-gray-600">Base Price (per page):</span>
+                    <span className="font-medium">SAR {
+                      serviceLevel === "SWORN" 
+                        ? pricingSettings.swornPricePerPage.toFixed(2)
+                        : pricingSettings.standardCertifiedPricePerPage.toFixed(2)
+                    }</span>
+                  </div>
+                  <div className="flex justify-between text-sm" suppressHydrationWarning>
+                    <span className="text-gray-600">Price per Page:</span>
+                    <span className="font-medium">SAR {
+                      serviceLevel === "SWORN" 
+                        ? pricingSettings.swornPricePerPage.toFixed(2)
+                        : pricingSettings.standardCertifiedPricePerPage.toFixed(2)
+                    }</span>
+                  </div>
+                  <div className="flex justify-between text-sm border-t pt-2" suppressHydrationWarning>
+                    <span className="text-gray-600">Subtotal ({formData.numPages} × {
+                      serviceLevel === "SWORN" 
+                        ? pricingSettings.swornPricePerPage.toFixed(2)
+                        : pricingSettings.standardCertifiedPricePerPage.toFixed(2)
+                    }):</span>
+                    <span className="font-medium">SAR {(
+                      parseInt(formData.numPages) * (serviceLevel === "SWORN" 
+                        ? pricingSettings.swornPricePerPage 
+                        : pricingSettings.standardCertifiedPricePerPage)
+                    ).toFixed(2)}</span>
+                  </div>
+                  {turnaround !== "STANDARD" && (
+                    <div className="flex justify-between text-sm text-green-600" suppressHydrationWarning>
+                      <span className="text-gray-600">
+                        {turnaround === "NEXT_DAY" ? "Next Day" : "Same Day"} Speed Multiplier:
+                      </span>
+                      <span className="font-medium">x {
+                        turnaround === "NEXT_DAY" 
+                          ? pricingSettings.nextDayMultiplier 
+                          : pricingSettings.sameDayMultiplier
+                      }</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm font-semibold text-green-600 border-t pt-2" suppressHydrationWarning>
+                    <span>Translation Cost:</span>
+                    <span>SAR {(
+                      parseInt(formData.numPages) * (serviceLevel === "SWORN" 
+                        ? pricingSettings.swornPricePerPage 
+                        : pricingSettings.standardCertifiedPricePerPage) * 
+                      (turnaround === "NEXT_DAY" ? pricingSettings.nextDayMultiplier :
+                       turnaround === "SAME_DAY" ? pricingSettings.sameDayMultiplier :
+                       pricingSettings.standardMultiplier)
+                    ).toFixed(2)}</span>
                   </div>
                   {hardCopyDelivery && (
+                    <div className="flex justify-between text-sm" suppressHydrationWarning>
+                      <span className="text-gray-600">Hard Copy Preparation:</span>
+                      <span className="font-medium">+ SAR {pricingSettings.hardCopyFee.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {appliedCoupon && (
                     <>
-                      <div className="flex justify-between text-sm" suppressHydrationWarning>
-                        <span className="text-gray-600">Hard Copy:</span>
-                        <span className="font-medium">50 SAR</span>
+                      <Separator />
+                      <div className="flex justify-between text-sm text-green-600" suppressHydrationWarning>
+                        <span className="flex items-center gap-1">
+                          <Tag className="w-4 h-4" />
+                          Coupon ({appliedCoupon.code})
+                        </span>
+                        <span className="font-medium">- {appliedCoupon.discountAmount.toFixed(2)} SAR</span>
                       </div>
-                      {hardCopyDeliveryType === "EXPRESS" && (
-                        <div className="flex justify-between text-sm" suppressHydrationWarning>
-                          <span className="text-gray-600">Express Delivery:</span>
-                          <span className="font-medium">30 SAR</span>
-                        </div>
-                      )}
                     </>
                   )}
             <Separator />
                   <div className="flex justify-between items-baseline" suppressHydrationWarning>
                     <span className="text-base font-semibold text-gray-900">Total</span>
-                    <span className="text-2xl font-bold text-gray-900">{finalPrice} SAR</span>
+                    <span className="text-2xl font-bold text-gray-900">{finalPrice.toFixed(2)} SAR</span>
                   </div>
+                </div>
+                
+                {/* Coupon Code Input */}
+                <div className="space-y-2 pt-2 border-t" suppressHydrationWarning>
+                  {appliedCoupon ? (
+                    <div className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded-md" suppressHydrationWarning>
+                      <div className="flex items-center gap-2" suppressHydrationWarning>
+                        <Tag className="w-4 h-4 text-green-600" />
+                        <span className="text-sm text-green-700 font-medium">Coupon Applied: {appliedCoupon.code}</span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRemoveCoupon}
+                        className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-100"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2" suppressHydrationWarning>
+                      <Label htmlFor="couponCode" className="text-sm font-medium">Have a coupon code?</Label>
+                      <div className="flex gap-2" suppressHydrationWarning>
+                        <Input
+                          id="couponCode"
+                          type="text"
+                          placeholder="Enter coupon code"
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter' && couponCode.trim() && priceBeforeDiscount > 0) {
+                              validateCoupon(couponCode, priceBeforeDiscount);
+                            }
+                          }}
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => validateCoupon(couponCode, priceBeforeDiscount)}
+                          disabled={isValidatingCoupon || !couponCode.trim() || priceBeforeDiscount === 0}
+                          className="whitespace-nowrap"
+                        >
+                          {isValidatingCoupon ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Applying...
+                            </>
+                          ) : (
+                            'Apply'
+                          )}
+                        </Button>
+                      </div>
+                      {couponError && (
+                        <p className="text-xs text-red-500">{couponError}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 <p className="text-xs text-gray-500 pt-2 border-t">
@@ -539,9 +839,17 @@ function ReviewOrderContent() {
                 <Button
                   size="lg"
                   onClick={handleConfirmOrder}
-                  className="w-full bg-[#076e32] hover:bg-[#065a2a] text-white mt-4"
+                  disabled={isSubmitting}
+                  className="w-full bg-[#076e32] hover:bg-[#065a2a] text-white mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Proceed to Secure Payment
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    'Proceed to Secure Payment'
+                  )}
                 </Button>
                 
                 <p className="text-xs text-gray-500 text-center pt-2">
