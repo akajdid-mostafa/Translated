@@ -76,16 +76,6 @@ export function DocumentUploadFormNew() {
   // Calculated values
   const [totalPages, setTotalPages] = useState(0);
   const [totalPrice, setTotalPrice] = useState(0);
-  
-  // Coupon state
-  const [couponCode, setCouponCode] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<{
-    code: string;
-    discountAmount: number;
-    discountType: string;
-  } | null>(null);
-  const [couponError, setCouponError] = useState("");
-  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
   // Pricing settings from API
   const [pricingSettings, setPricingSettings] = useState({
@@ -152,15 +142,10 @@ export function DocumentUploadFormNew() {
       if (formData.hardCopy) {
         price += PRICING.hardCopyBase;
       }
-      
-      // Apply coupon discount if available
-      if (appliedCoupon) {
-        price = Math.max(0, price - appliedCoupon.discountAmount);
-      }
     }
     
     setTotalPrice(Math.round(price));
-  }, [totalPages, formData.turnaround, formData.documentType, formData.hardCopy, appliedCoupon, pricingSettings]);
+  }, [totalPages, formData.turnaround, formData.documentType, formData.hardCopy, pricingSettings]);
 
   // Track if we've already shown the page limit warning to avoid spam
   const [hasShownPageLimitWarning, setHasShownPageLimitWarning] = useState(false);
@@ -544,71 +529,6 @@ export function DocumentUploadFormNew() {
     setUploadedFiles((prev) => prev.filter((f) => f.id !== fileId));
   };
 
-  // Validate and apply coupon
-  const handleApplyCoupon = async () => {
-    if (!couponCode.trim()) {
-      setCouponError("Please enter a coupon code");
-      return;
-    }
-
-    if (totalPages === 0) {
-      setCouponError("Please upload files first");
-      return;
-    }
-
-    setIsValidatingCoupon(true);
-    setCouponError("");
-
-    try {
-      // Calculate base price before discount for validation
-      let basePrice = 0;
-      if (totalPages > 0) {
-        let unitPrice = PRICING.basePrice;
-        if (formData.documentType === "SWORN") unitPrice += PRICING.swornFee;
-        unitPrice *= PRICING.multipliers[formData.turnaround as keyof typeof PRICING.multipliers] || 1;
-        basePrice = Math.round(totalPages * unitPrice);
-        if (formData.hardCopy) {
-          basePrice += PRICING.hardCopyBase;
-        }
-      }
-
-      const response = await fetch("/api/coupons/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: couponCode.trim(),
-          totalAmount: basePrice,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.valid) {
-        setAppliedCoupon({
-          code: data.coupon.code,
-          discountAmount: data.discountAmount,
-          discountType: data.coupon.discountType,
-        });
-        setCouponError("");
-        setCouponCode(""); // Clear input
-      } else {
-        setCouponError(data.error || "Invalid coupon code");
-        setAppliedCoupon(null);
-      }
-    } catch (error) {
-      console.error("Error validating coupon:", error);
-      setCouponError("Failed to validate coupon. Please try again.");
-      setAppliedCoupon(null);
-    } finally {
-      setIsValidatingCoupon(false);
-    }
-  };
-
-  const handleRemoveCoupon = () => {
-    setAppliedCoupon(null);
-    setCouponCode("");
-    setCouponError("");
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -670,6 +590,8 @@ export function DocumentUploadFormNew() {
         sourceLanguage: formData.sourceLanguage,
         targetLanguage: formData.targetLanguage,
         documentType: formData.documentType === "SWORN" ? "CERTIFIED" : "LEGAL",
+        serviceLevel: formData.documentType === "SWORN" ? "SWORN" : "STANDARD_CERTIFIED",
+        turnaround: formData.turnaround,
         urgency: formData.turnaround,
         specialization: "",
         additionalNotes: formData.specialInstructions,
@@ -685,8 +607,6 @@ export function DocumentUploadFormNew() {
         deliveryPostalCode: formData.deliveryPostalCode,
         deliveryCountry: formData.deliveryCountry,
         deliveryInstructions: formData.deliveryInstructions,
-        couponCode: appliedCoupon?.code || null,
-        discountAmount: appliedCoupon?.discountAmount || null,
       };
       
       const encodedData = encodeURIComponent(JSON.stringify(reviewData));
@@ -1136,8 +1056,11 @@ export function DocumentUploadFormNew() {
                               <span className="text-emerald-400 font-bold text-base">
                                 SAR {(() => {
                                   if (totalPages === 0) return 0;
-                                  let unitPrice = PRICING.basePrice;
-                                  if (formData.documentType === 'SWORN') unitPrice += PRICING.swornFee;
+                                  // Base price per page based on service type
+                                  let unitPrice = formData.documentType === "SWORN" 
+                                    ? PRICING.swornPricePerPage 
+                                    : PRICING.basePrice;
+                                  // Apply turnaround multiplier
                                   unitPrice *= PRICING.multipliers[formData.turnaround as keyof typeof PRICING.multipliers] || 1;
                                   return Math.round(totalPages * unitPrice);
                                 })()}
@@ -1154,78 +1077,12 @@ export function DocumentUploadFormNew() {
                               </div>
                             </div>
                           )}
-                          
-                          {/* Coupon Discount */}
-                          {appliedCoupon && (
-                            <div className="mt-3 pt-3 border-t border-gray-700 space-y-1" suppressHydrationWarning>
-                              <div className="flex justify-between items-center text-green-400">
-                                <span className="text-sm font-medium">Coupon ({appliedCoupon.code})</span>
-                                <span className="text-sm font-bold">- SAR {appliedCoupon.discountAmount.toFixed(2)}</span>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       </>
                     ) : (
                       <p className="text-gray-500 italic text-center py-4">Upload a file to see the instant quote...</p>
                     )}
                   </div>
-
-                  {/* Coupon Code Input */}
-                  {totalPages > 0 && (
-                    <div className="mt-4 pt-4 border-t border-gray-700" suppressHydrationWarning>
-                      {appliedCoupon ? (
-                        <div className="flex items-center justify-between p-3 bg-green-900/30 rounded-lg border border-green-500/30" suppressHydrationWarning>
-                          <div className="flex items-center gap-2">
-                            <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            <span className="text-sm text-green-300 font-medium">Coupon Applied: {appliedCoupon.code}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={handleRemoveCoupon}
-                            className="text-green-300 hover:text-white text-sm underline"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-2" suppressHydrationWarning>
-                          <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Coupon Code</label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="text"
-                              value={couponCode}
-                              onChange={(e) => {
-                                setCouponCode(e.target.value.toUpperCase());
-                                setCouponError("");
-                              }}
-                              placeholder="Enter coupon code"
-                              className="flex-1 border-gray-600 bg-gray-800 text-white placeholder:text-gray-500"
-                              onKeyPress={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  handleApplyCoupon();
-                                }
-                              }}
-                            />
-                            <Button
-                              type="button"
-                              onClick={handleApplyCoupon}
-                              disabled={isValidatingCoupon || !couponCode.trim()}
-                              className="bg-[#076E32] hover:bg-[#065a2a] disabled:bg-gray-700"
-                            >
-                              {isValidatingCoupon ? "..." : "Apply"}
-                            </Button>
-                          </div>
-                          {couponError && (
-                            <p className="text-xs text-red-400">{couponError}</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
 
                   <div className="mt-8 pt-6 border-t border-gray-600 flex justify-between items-end" suppressHydrationWarning>
                     <span className="text-sm text-gray-400 font-medium">Total (SAR)</span>

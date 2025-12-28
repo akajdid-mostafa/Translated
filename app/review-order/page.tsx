@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
-import { CheckCircle, Clock, CalendarDays, ChevronLeft, MapPin, FileText, Package, User, Mail, Phone, Loader2, Tag, X } from 'lucide-react'
+import { CheckCircle, Clock, CalendarDays, ChevronLeft, MapPin, FileText, Package, User, Mail, Phone, Loader2 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
@@ -58,17 +58,6 @@ function ReviewOrderContent() {
     deliveryInstructions: ''
   });
   
-  // Coupon state
-  const [couponCode, setCouponCode] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<{
-    code: string;
-    discountAmount: number;
-    discountType: string;
-  } | null>(null);
-  const [couponError, setCouponError] = useState("");
-  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
-  const [priceBeforeDiscount, setPriceBeforeDiscount] = useState(0);
-  
   // Pricing settings from API
   const [pricingSettings, setPricingSettings] = useState({
     standardCertifiedPricePerPage: 49,
@@ -98,8 +87,8 @@ function ReviewOrderContent() {
   };
 
   // Fixed pricing calculation algorithm
-  // Formula: (Price per page × Service Type) × Turnaround Multiplier + Hard Copy Fee - Coupon
-  const calculatePrice = (numPages: string, currentServiceLevel: string, currentTurnaround: string, includeHardCopy: boolean = false, applyCoupon: boolean = true) => {
+  // Formula: (Price per page × Service Type) × Turnaround Multiplier + Hard Copy Fee
+  const calculatePrice = (numPages: string, currentServiceLevel: string, currentTurnaround: string, includeHardCopy: boolean = false) => {
     const pages = parseInt(numPages, 10);
     if (isNaN(pages) || pages <= 0) return 0;
 
@@ -124,73 +113,10 @@ function ReviewOrderContent() {
     // Step 4: Add hard copy fee if selected
     const hardCopyFee = includeHardCopy ? pricingSettings.hardCopyFee : 0;
     
-    // Step 5: Calculate subtotal
-    let subtotal = translationPrice + hardCopyFee;
+    // Step 5: Calculate final price
+    const finalPrice = translationPrice + hardCopyFee;
     
-    // Step 6: Apply coupon discount (if applicable)
-    if (applyCoupon && appliedCoupon) {
-      subtotal = Math.max(0, subtotal - appliedCoupon.discountAmount);
-    }
-    
-    return subtotal;
-  };
-
-  // Validate and apply coupon
-  const validateCoupon = async (code: string, totalAmount: number) => {
-    if (!code.trim()) {
-      setCouponError("Please enter a coupon code");
-      return;
-    }
-
-    setIsValidatingCoupon(true);
-    setCouponError("");
-
-    try {
-      const response = await fetch("/api/coupons/validate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          code: code.trim(),
-          totalAmount: totalAmount,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.valid) {
-        setAppliedCoupon({
-          code: data.coupon.code,
-          discountAmount: data.discountAmount,
-          discountType: data.coupon.discountType,
-        });
-        // Update final price with discount
-        setFinalPrice(data.finalAmount);
-        setCouponError("");
-        setCouponCode(""); // Clear input
-      } else {
-        setAppliedCoupon(null);
-        setCouponError(data.error || "Invalid coupon code");
-        // Reset to price without coupon
-        setFinalPrice(totalAmount);
-      }
-    } catch (error) {
-      console.error("Error validating coupon:", error);
-      setCouponError("Failed to validate coupon. Please try again.");
-      setAppliedCoupon(null);
-      setFinalPrice(totalAmount);
-    } finally {
-      setIsValidatingCoupon(false);
-    }
-  };
-
-  const handleRemoveCoupon = () => {
-    setAppliedCoupon(null);
-    setCouponCode("");
-    setCouponError("");
-    // Reset to price before discount
-    setFinalPrice(priceBeforeDiscount);
+    return finalPrice;
   };
 
   // Fetch pricing settings on mount (with cache busting)
@@ -273,20 +199,10 @@ function ReviewOrderContent() {
   // Recalculate price whenever form data, service level, turnaround, or pricing settings change
   useEffect(() => {
     if (formData) {
-      // Calculate price without coupon first
-      const priceWithoutCoupon = calculatePrice(formData.numPages, serviceLevel, turnaround, hardCopyDelivery, false);
-      setPriceBeforeDiscount(priceWithoutCoupon);
-      
-      // If coupon is applied, re-validate it with the new price
-      if (appliedCoupon && priceWithoutCoupon > 0) {
-        validateCoupon(appliedCoupon.code, priceWithoutCoupon);
-      } else {
-        // Calculate final price with coupon if available
-        const finalPriceWithCoupon = calculatePrice(formData.numPages, serviceLevel, turnaround, hardCopyDelivery, true);
-        setFinalPrice(finalPriceWithCoupon);
-      }
+      const calculatedPrice = calculatePrice(formData.numPages, serviceLevel, turnaround, hardCopyDelivery);
+      setFinalPrice(calculatedPrice);
     }
-  }, [serviceLevel, turnaround, formData, hardCopyDelivery, appliedCoupon, pricingSettings]);
+  }, [serviceLevel, turnaround, formData, hardCopyDelivery, pricingSettings]);
 
   const handleConfirmOrder = async () => {
     if (!formData) return;
@@ -349,13 +265,7 @@ function ReviewOrderContent() {
       formDataToSend.append('specialization', formData.specialization || '');
       formDataToSend.append('additionalNotes', formData.additionalNotes || '');
       formDataToSend.append('numberOfPages', formData.numPages);
-      formDataToSend.append('estimatedPrice', finalPrice.toString()); // Add the calculated final price (with coupon discount)
-      
-      // Add coupon information if applied
-      if (appliedCoupon) {
-        formDataToSend.append('couponCode', appliedCoupon.code);
-        formDataToSend.append('discountAmount', appliedCoupon.discountAmount.toString());
-      }
+      formDataToSend.append('estimatedPrice', finalPrice.toString()); // Add the calculated final price
       formDataToSend.append('originalFileName', formData.originalFileName);
       formDataToSend.append('fileUrl', formData.fileUrl);
       formDataToSend.append('fileSize', formData.fileSize);
@@ -466,7 +376,9 @@ function ReviewOrderContent() {
                   </div>
                   <div>
                     <p className="text-gray-500 mb-1">Document Type</p>
-                    <p className="font-medium">{formData.documentType}</p>
+                    <p className="font-medium">
+                      {serviceLevel === "SWORN" ? "Sworn (Official Court)" : "Standard Certified"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-gray-500 mb-1">Pages</p>
@@ -729,82 +641,11 @@ function ReviewOrderContent() {
                       <span className="font-medium">+ SAR {pricingSettings.hardCopyFee.toFixed(2)}</span>
                     </div>
                   )}
-                  {appliedCoupon && (
-                    <>
-                      <Separator />
-                      <div className="flex justify-between text-sm text-green-600" suppressHydrationWarning>
-                        <span className="flex items-center gap-1">
-                          <Tag className="w-4 h-4" />
-                          Coupon ({appliedCoupon.code})
-                        </span>
-                        <span className="font-medium">- {appliedCoupon.discountAmount.toFixed(2)} SAR</span>
-                      </div>
-                    </>
-                  )}
             <Separator />
                   <div className="flex justify-between items-baseline" suppressHydrationWarning>
                     <span className="text-base font-semibold text-gray-900">Total</span>
                     <span className="text-2xl font-bold text-gray-900">{finalPrice.toFixed(2)} SAR</span>
                   </div>
-                </div>
-                
-                {/* Coupon Code Input */}
-                <div className="space-y-2 pt-2 border-t" suppressHydrationWarning>
-                  {appliedCoupon ? (
-                    <div className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded-md" suppressHydrationWarning>
-                      <div className="flex items-center gap-2" suppressHydrationWarning>
-                        <Tag className="w-4 h-4 text-green-600" />
-                        <span className="text-sm text-green-700 font-medium">Coupon Applied: {appliedCoupon.code}</span>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleRemoveCoupon}
-                        className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-100"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2" suppressHydrationWarning>
-                      <Label htmlFor="couponCode" className="text-sm font-medium">Have a coupon code?</Label>
-                      <div className="flex gap-2" suppressHydrationWarning>
-                        <Input
-                          id="couponCode"
-                          type="text"
-                          placeholder="Enter coupon code"
-                          value={couponCode}
-                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter' && couponCode.trim() && priceBeforeDiscount > 0) {
-                              validateCoupon(couponCode, priceBeforeDiscount);
-                            }
-                          }}
-                          className="flex-1"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => validateCoupon(couponCode, priceBeforeDiscount)}
-                          disabled={isValidatingCoupon || !couponCode.trim() || priceBeforeDiscount === 0}
-                          className="whitespace-nowrap"
-                        >
-                          {isValidatingCoupon ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Applying...
-                            </>
-                          ) : (
-                            'Apply'
-                          )}
-                        </Button>
-                      </div>
-                      {couponError && (
-                        <p className="text-xs text-red-500">{couponError}</p>
-                      )}
-                    </div>
-                  )}
                 </div>
                 
                 <p className="text-xs text-gray-500 pt-2 border-t">
